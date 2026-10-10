@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ระบบรายงานความเสี่ยง NAH</title>
+  <meta name="description" content="Medical Lab Risk Management System — ระบบรายงานความเสี่ยงและอุบัติการณ์ห้องปฏิบัติการ">
+  <meta name="theme-color" content="#3b4d23">
+  <link rel="icon" href="icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- Toasts -->
+  <div class="toasts" aria-live="polite">
+    <div v-for="t in toasts" :key="t.id" class="toast" :class="{err: t.type==='err'}">
+      <i :class="t.type==='err' ? 'fas fa-circle-exclamation' : 'fas fa-circle-check'"></i>
+      <span>{{ t.text }}</span>
+    </div>
+  </div>
+
+  <!-- ============ Login ============ -->
+  <main v-if="!user" class="login">
+    <section class="login-card">
+      <img class="login-logo" src="icons/logo-128.png" alt="โลโก้ NAH">
+      <h1>ระบบรายงานความเสี่ยง NAH</h1>
+      <p class="sub">Medical Lab Risk Management System v2.0</p>
+
+      <form @submit.prevent="doLogin" novalidate>
+        <div class="field">
+          <label for="lg-user">ชื่อผู้ใช้</label>
+          <input id="lg-user" class="input" type="text" v-model.trim="login.username" autocomplete="username" autocapitalize="none" placeholder="Username" required>
+        </div>
+        <div class="field">
+          <label for="lg-pass">รหัสผ่าน</label>
+          <div class="pw">
+            <input id="lg-pass" class="input" :type="login.show ? 'text' : 'password'" v-model="login.password" autocomplete="current-password" placeholder="Password" required>
+            <button type="button" @click="login.show = !login.show" :aria-label="login.show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'">
+              <i :class="login.show ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+        </div>
+        <div v-if="login.error" class="alert alert-err" role="alert"><i class="fas fa-circle-exclamation"></i><span>{{ login.error }}</span></div>
+        <button class="btn btn-block" type="submit" :disabled="busy.login">
+          <i :class="busy.login ? 'fas fa-spinner spin' : 'fas fa-right-to-bracket'"></i>
+          {{ busy.login ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ' }}
+        </button>
+      </form>
+
+      <div v-if="demo" class="alert alert-demo demo-hint">
+        <i class="fas fa-flask"></i>
+        <span><b>โหมดสาธิต</b> (ยังไม่ได้ตั้งค่า API_URL) ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น<br>
+        ผู้ดูแล <code>admin</code> / <code>admin1234</code> · ผู้ใช้ <code>user</code> / <code>user1234</code></span>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ App ============ -->
+  <template v-else>
+    <header class="topbar">
+      <div class="topbar-in">
+        <div class="brand">
+          <img src="icons/logo-128.png" alt="">
+          <div>
+            <h1>ระบบรายงานความเสี่ยง NAH</h1>
+            <p>Medical Lab Risk Management</p>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div class="who">
+          <div class="avatar" aria-hidden="true">{{ initial }}</div>
+          <div class="meta">{{ user.displayName }}<small>{{ isAdmin ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งาน' }}</small></div>
+        </div>
+        <button class="iconbtn" @click="refresh" title="รีเฟรชข้อมูล" aria-label="รีเฟรชข้อมูล"><i class="fas fa-rotate" :class="{spin: busy.load}"></i></button>
+        <button class="iconbtn out" @click="logout()" title="ออกจากระบบ" aria-label="ออกจากระบบ"><i class="fas fa-power-off"></i></button>
+      </div>
+      <nav class="tabs" aria-label="เมนูหลัก">
+        <button v-for="t in tabs" :key="t.id" class="tab" :class="{on: tab===t.id}" @click="setTab(t.id)">
+          <i :class="t.icon"></i><span>{{ t.label }}</span>
+        </button>
+      </nav>
+    </header>
+    <div v-if="demo" class="demo-bar"><i class="fas fa-flask"></i> โหมดสาธิต — ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น ตั้งค่า API_URL ใน config.js เพื่อเชื่อม Google Sheets</div>
+
+    <main class="page">
+
+      <!-- ===== Dashboard ===== -->
+      <section v-show="tab==='dashboard'">
+        <div class="page-head">
+          <div><h2>ภาพรวมความเสี่ยง</h2><p>สรุปจากรายงานทั้งหมด {{ reports.length }} รายการ</p></div>
+          <button class="btn btn-amber" @click="setTab('new')"><i class="fas fa-plus"></i> แจ้งความเสี่ยงใหม่</button>
+        </div>
+
+        <div class="stats">
+          <button class="stat" @click="goList({})"><b>{{ stats.total }}</b><span>ทั้งหมด</span></button>
+          <button class="stat hi" @click="goList({status:'รอดำเนินการ', sev:'high'})"><b>{{ stats.highPending }}</b><span>รอดำเนินการ (ความเสี่ยงสูง)</span></button>
+          <button class="stat pg" @click="goList({status:'กำลังดำเนินการ'})"><b>{{ stats.progress }}</b><span>กำลังดำเนินการ</span></button>
+          <button class="stat dn" @click="goList({status:'เสร็จสิ้น'})"><b>{{ stats.done }}</b><span>เสร็จสิ้น</span></button>
+        </div>
+
+        <div class="card card-pad" style="margin-bottom:16px" v-if="stats.total">
+          <div class="card-title" style="margin-bottom:4px"><i class="fas fa-bars-progress"></i> ความคืบหน้าการแก้ไข</div>
+          <div class="statusbar" role="img" :aria-label="'เสร็จสิ้น ' + stats.donePct + ' เปอร์เซ็นต์'">
+            <i :style="{width: pct(stats.done)+'%', background:'var(--olive-800)'}"></i>
+            <i :style="{width: pct(stats.progress)+'%', background:'var(--olive-600)'}"></i>
+            <i :style="{width: pct(stats.pending)+'%', background:'var(--amber-500)'}"></i>
+          </div>
+          <div class="legend">
+            <span style="--c:var(--olive-800)">เสร็จสิ้น {{ stats.done }} ({{ stats.donePct }}%)</span>
+            <span style="--c:var(--olive-600)">กำลังดำเนินการ {{ stats.progress }}</span>
+            <span style="--c:var(--amber-500)">รอดำเนินการ {{ stats.pending }}</span>
+          </div>
+        </div>
+
+        <div class="card card-pad" style="margin-bottom:16px">
+          <div class="card-title"><i class="fas fa-border-all"></i> Risk Matrix — โปรแกรม × ระดับความรุนแรงด้านคลินิก</div>
+          <div class="scroll-x">
+            <table class="matrix">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th v-for="c in CLINICAL" :key="c.v" :title="c.t">{{ c.v }}</th>
+                  <th>รวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in matrix.rows" :key="row.program">
+                  <th class="rowh">{{ row.label }}</th>
+                  <td v-for="(n, i) in row.cells" :key="i">
+                    <button class="mcell" :class="[zoneOf(CLINICAL[i].v), {zero: !n}]" :style="{'--a': alpha(n)}"
+                            :disabled="!n" @click="goList({program: row.program, clinical: CLINICAL[i].v})"
+                            :aria-label="row.label + ' ระดับ ' + CLINICAL[i].v + ' จำนวน ' + n">{{ n || '' }}</button>
+                  </td>
+                  <td class="tot">{{ row.total || '' }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr><th class="rowh">รวม</th><td v-for="(n,i) in matrix.cols" :key="i" class="tot">{{ n || '' }}</td><td class="tot">{{ stats.total }}</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="zones">
+            <span style="--c:var(--zone-low)">A–B ยังไม่ถึงผู้ป่วย</span>
+            <span style="--c:var(--zone-mid)">C–D ถึงผู้ป่วย ไม่มีอันตราย/ต้องเฝ้าระวัง</span>
+            <span style="--c:var(--zone-high)">E–I เกิดอันตราย</span>
+            <span class="hint">คลิกช่องเพื่อดูรายการ</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card card-pad">
+            <div class="card-title"><i class="fas fa-layer-group"></i> ระดับความรุนแรงด้านสนับสนุน</div>
+            <div class="chips">
+              <button v-for="s in SUPPORT" :key="s.v" class="chip" @click="goList({support: s.v})">ระดับ {{ s.v }} <b>{{ supportCounts[s.v] }}</b></button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-pad" style="padding-bottom:6px"><div class="card-title" style="margin:0"><i class="fas fa-clock-rotate-left"></i> รายงานล่าสุด</div></div>
+            <div class="scroll-x">
+              <table class="tbl" v-if="recent.length">
+                <tbody>
+                  <tr v-for="r in recent" :key="r.id" class="click" @click="openDetail(r)">
+                    <td class="id">{{ r.id }}</td>
+                    <td class="subj"><b>{{ r.subject }}</b></td>
+                    <td>{{ fmtDate(r.date) }}</td>
+                    <td><span class="badge" :class="'st-'+statusIdx(r.status)">{{ r.status }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="empty"><i class="fas fa-inbox"></i>ยังไม่มีรายงาน กด "แจ้งความเสี่ยงใหม่" เพื่อเริ่มต้น</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== New report ===== -->
+      <section v-show="tab==='new'">
+        <div class="page-head">
+          <div><h2>รายงานความเสี่ยง/อุบัติการณ์</h2><p>กรอกข้อมูลให้ครบ ช่องที่มี <span class="req">*</span> จำเป็นต้องกรอก</p></div>
+        </div>
+        <form class="card card-pad" @submit.prevent="saveReport" novalidate>
+          <fieldset>
+            <legend><i class="fas fa-file-pen"></i> ข้อมูลเหตุการณ์</legend>
+            <div class="form-grid">
+              <div class="field">
+                <label for="f-date">วันเดือนปีที่เกิดเหตุ <span class="req">*</span></label>
+                <input id="f-date" type="date" class="input" :class="{bad: errors.date}" v-model="form.date" :max="today">
+                <span class="err" v-if="errors.date">{{ errors.date }}</span>
+              </div>
+              <div class="field">
+                <label for="f-code">รหัสความเสี่ยง</label>
+                <input id="f-code" type="text" class="input" v-model.trim="form.riskCode" placeholder="ระบุรหัสความเสี่ยง (ถ้ามี)" maxlength="100">
+              </div>
+              <div class="field span2">
+                <label for="f-subject">รหัส : เรื่อง <span class="req">*</span></label>
+                <input id="f-subject" type="text" class="input" :class="{bad: errors.subject}" v-model.trim="form.subject" placeholder="เช่น LAB-03 : ติดฉลากหลอดเลือดผิดคน" maxlength="300">
+                <span class="err" v-if="errors.subject">{{ errors.subject }}</span>
+              </div>
+              <div class="field span2">
+                <label for="f-detail">ความเสี่ยง/อุบัติการณ์ (รายละเอียด) <span class="req">*</span></label>
+                <textarea id="f-detail" class="textarea" :class="{bad: errors.detail}" v-model.trim="form.detail" placeholder="อธิบายว่าเกิดอะไรขึ้น ที่ไหน กับใคร และผลที่ตามมา" maxlength="5000"></textarea>
+                <span class="err" v-if="errors.detail">{{ errors.detail }}</span>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend><i class="fas fa-gauge-high"></i> ระดับความรุนแรง</legend>
+            <div class="form-grid">
+              <div class="field">
+                <label for="f-clin">ระดับความรุนแรงด้านคลินิก</label>
+                <select id="f-clin" class="select" v-model="form.clinicalLevel">
+                  <option value="">-- เลือก --</option>
+                  <option v-for="c in CLINICAL" :key="c.v" :value="c.v">{{ c.v }} — {{ c.t }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-sup">ระดับความรุนแรงด้านสนับสนุน</label>
+                <select id="f-sup" class="select" v-model="form.supportLevel">
+                  <option value="">-- เลือก --</option>
+                  <option v-for="s in SUPPORT" :key="s.v" :value="s.v">{{ s.v }} — {{ s.t }}</option>
+                </select>
+              </div>
+              <div class="field span2">
+                <label for="f-prog">โปรแกรมความเสี่ยงที่เกี่ยวข้อง</label>
+                <select id="f-prog" class="select" v-model="form.relatedProgram">
+                  <option value="">-- เลือก --</option>
+                  <option v-for="p in PROGRAMS" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+              <div class="span2">
+                <div class="sevnote">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(form)) }}</b> จากระดับที่เลือก</div>
+                <div class="guide">
+                  <div class="g1"><b>ต่ำ</b> · คลินิก A–B / สนับสนุน 1–2</div>
+                  <div class="g2"><b>กลาง</b> · คลินิก C–D / สนับสนุน 3</div>
+                  <div class="g3"><b>สูง</b> · คลินิก E–I / สนับสนุน 4–5</div>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend><i class="fas fa-screwdriver-wrench"></i> การแก้ไขและผู้รับผิดชอบ</legend>
+            <div class="form-grid">
+              <div class="field">
+                <label for="f-fix">การแก้ไขเบื้องต้น</label>
+                <textarea id="f-fix" class="textarea" v-model.trim="form.initialFix" placeholder="ระบุการแก้ไขเบื้องต้นที่ทำไปแล้ว" maxlength="3000"></textarea>
+              </div>
+              <div class="field">
+                <label for="f-plan">แผนแก้ไข</label>
+                <textarea id="f-plan" class="textarea" v-model.trim="form.fixPlan" placeholder="ระบุแผนแก้ไข/ป้องกันไม่ให้เกิดซ้ำ" maxlength="3000"></textarea>
+              </div>
+              <div class="field">
+                <label for="f-resp">ผู้รับผิดชอบระดับหน่วยงาน</label>
+                <input id="f-resp" type="text" class="input" v-model.trim="form.responsiblePerson" maxlength="200">
+              </div>
+              <div class="field">
+                <label for="f-rep">ผู้รายงาน (ดึงชื่ออัตโนมัติ)</label>
+                <input id="f-rep" type="text" class="input" :value="user.displayName" readonly>
+              </div>
+            </div>
+          </fieldset>
+
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" @click="resetForm" :disabled="busy.save">ล้างฟอร์ม</button>
+            <button type="submit" class="btn" :disabled="busy.save">
+              <i :class="busy.save ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i>
+              {{ busy.save ? 'กำลังบันทึก...' : 'บันทึกรายงาน' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ===== List ===== -->
+      <section v-show="tab==='list'">
+        <div class="page-head">
+          <div><h2>รายการความเสี่ยง</h2><p>ค้นหา กรอง และเปิดดูรายละเอียดแต่ละรายงาน</p></div>
+          <button class="btn btn-amber" @click="exportCsv" :disabled="!filtered.length"><i class="fas fa-file-export"></i> Export CSV</button>
+        </div>
+        <div class="card">
+          <div class="filters">
+            <div class="search"><i class="fas fa-magnifying-glass"></i>
+              <input class="input" type="search" v-model.trim="f.q" placeholder="ค้นหา รหัส / เรื่อง / รายละเอียด / ผู้รายงาน" aria-label="ค้นหา">
+            </div>
+            <select class="select" v-model="f.status" aria-label="กรองตามสถานะ">
+              <option value="">ทุกสถานะ</option><option v-for="s in STATUS" :key="s" :value="s">{{ s }}</option>
+            </select>
+            <select class="select" v-model="f.program" aria-label="กรองตามโปรแกรม">
+              <option value="">ทุกโปรแกรม</option><option v-for="p in PROGRAMS" :key="p" :value="p">{{ p }}</option>
+            </select>
+            <select class="select" v-model="f.sev" aria-label="กรองตามระดับความเสี่ยง">
+              <option value="">ทุกระดับความเสี่ยง</option><option value="high">สูง</option><option value="mid">กลาง</option><option value="low">ต่ำ</option>
+            </select>
+            <select class="select" v-model="f.clinical" aria-label="กรองตามระดับคลินิก">
+              <option value="">คลินิก: ทั้งหมด</option><option v-for="c in CLINICAL" :key="c.v" :value="c.v">คลินิก {{ c.v }}</option>
+            </select>
+            <select class="select" v-model="f.support" aria-label="กรองตามระดับสนับสนุน">
+              <option value="">สนับสนุน: ทั้งหมด</option><option v-for="s in SUPPORT" :key="s.v" :value="s.v">สนับสนุน {{ s.v }}</option>
+            </select>
+          </div>
+          <div class="list-meta">
+            <span>แสดง {{ filtered.length }} จาก {{ reports.length }} รายการ</span>
+            <button class="btn btn-ghost btn-sm" v-if="hasFilter" @click="clearFilters"><i class="fas fa-xmark"></i> ล้างตัวกรอง</button>
+          </div>
+          <div class="scroll-x">
+            <table class="tbl" v-if="filtered.length">
+              <thead><tr><th>รหัส</th><th>วันที่เกิดเหตุ</th><th>เรื่อง</th><th>โปรแกรม</th><th>ระดับ</th><th>สถานะ</th><th>ผู้รายงาน</th></tr></thead>
+              <tbody>
+                <tr v-for="r in filtered" :key="r.id" class="click" tabindex="0" @click="openDetail(r)" @keydown.enter="openDetail(r)">
+                  <td class="id">{{ r.id }}</td>
+                  <td>{{ fmtDate(r.date) }}</td>
+                  <td class="subj"><b>{{ r.subject }}</b></td>
+                  <td>{{ r.relatedProgram || '-' }}</td>
+                  <td>
+                    <span class="lv" :class="sevOf(r)" :title="'ความเสี่ยง' + sevLabel(sevOf(r))">{{ r.clinicalLevel || '–' }}</span>
+                    <span class="lv" :class="sevOf({supportLevel:r.supportLevel})">{{ r.supportLevel || '–' }}</span>
+                  </td>
+                  <td><span class="badge" :class="'st-'+statusIdx(r.status)"><i :class="statusIcon(r.status)"></i>{{ r.status }}</span></td>
+                  <td>{{ r.reporterName }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="empty">
+              <i class="fas fa-folder-open"></i>
+              {{ reports.length ? 'ไม่พบรายการที่ตรงกับตัวกรอง' : 'ยังไม่มีรายการ — เริ่มจากเมนู "รายงานใหม่"' }}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Users (admin) ===== -->
+      <section v-if="isAdmin" v-show="tab==='users'">
+        <div class="page-head">
+          <div><h2>จัดการผู้ใช้</h2><p>เพิ่ม แก้ไข ระงับ หรือลบบัญชีผู้ใช้</p></div>
+          <button class="btn btn-amber" @click="openUser()"><i class="fas fa-user-plus"></i> เพิ่มผู้ใช้</button>
+        </div>
+        <div class="card scroll-x">
+          <table class="tbl" v-if="users.length">
+            <thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อแสดง</th><th>บทบาท</th><th>สถานะ</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="u in users" :key="u.username">
+                <td class="id">{{ u.username }}</td>
+                <td>{{ u.displayName }}</td>
+                <td><span class="badge" :class="u.role==='admin' ? 'st-2' : 'st-1'">{{ u.role==='admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งาน' }}</span></td>
+                <td><span class="badge" :class="u.status==='active' ? 'st-1' : 'st-0'">{{ u.status==='active' ? 'ใช้งานอยู่' : 'ถูกระงับ' }}</span></td>
+                <td style="text-align:right;white-space:nowrap">
+                  <button class="btn btn-ghost btn-sm" @click="openUser(u)"><i class="fas fa-pen"></i> แก้ไข</button>
+                  <button class="btn btn-ghost btn-sm" @click="removeUser(u)" :disabled="u.username===user.username" title="ลบผู้ใช้"><i class="fas fa-trash"></i></button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="empty"><i class="fas fa-users"></i>{{ busy.load ? 'กำลังโหลด...' : 'ไม่พบผู้ใช้' }}</div>
+        </div>
+      </section>
+
+      <!-- ===== Reset (admin) ===== -->
+      <section v-if="isAdmin" v-show="tab==='reset'">
+        <div class="page-head"><div><h2>Reset ข้อมูล</h2><p>สำหรับผู้ดูแลระบบเท่านั้น</p></div></div>
+        <div class="card card-pad" style="max-width:560px">
+          <div class="reset-warn">
+            <b><i class="fas fa-triangle-exclamation"></i> คำเตือน</b>
+            <p>การ Reset จะลบรายการความเสี่ยงทั้งหมด ({{ reports.length }} รายการ) และไม่สามารถย้อนกลับได้ รายชื่อผู้ใช้จะไม่ถูกลบ</p>
+          </div>
+          <div class="field">
+            <label for="rs">พิมพ์ <b>RESET CONFIRM</b> เพื่อยืนยัน</label>
+            <input id="rs" class="input" type="text" v-model="resetText" autocomplete="off" placeholder="RESET CONFIRM">
+          </div>
+          <button class="btn btn-danger btn-block" style="margin-top:14px" @click="doReset" :disabled="resetText!=='RESET CONFIRM' || busy.reset">
+            <i :class="busy.reset ? 'fas fa-spinner spin' : 'fas fa-trash'"></i> Reset ข้อมูลทั้งหมด
+          </button>
+        </div>
+      </section>
+    </main>
+  </template>
+
+  <!-- ============ Detail modal ============ -->
+  <div class="overlay" v-if="detail" @click.self="detail=null" @keydown.esc="detail=null">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dt-title">
+      <div class="modal-h"><h3 id="dt-title">{{ detail.id }}</h3><button class="iconbtn" @click="detail=null" aria-label="ปิด"><i class="fas fa-xmark"></i></button></div>
+      <div class="modal-b">
+        <dl class="dl">
+          <dt>เรื่อง</dt><dd><b>{{ detail.subject }}</b></dd>
+          <dt>วันที่เกิดเหตุ</dt><dd>{{ fmtDate(detail.date) }}</dd>
+          <dt>รหัสความเสี่ยง</dt><dd>{{ detail.riskCode || '-' }}</dd>
+          <dt>รายละเอียด</dt><dd>{{ detail.detail }}</dd>
+          <dt>ความรุนแรง</dt>
+          <dd>คลินิก <span class="lv" :class="sevOf({clinicalLevel:detail.clinicalLevel})">{{ detail.clinicalLevel || '–' }}</span>
+              สนับสนุน <span class="lv" :class="sevOf({supportLevel:detail.supportLevel})">{{ detail.supportLevel || '–' }}</span>
+              · ความเสี่ยง<b>{{ sevLabel(sevOf(detail)) }}</b></dd>
+          <dt>โปรแกรม</dt><dd>{{ detail.relatedProgram || '-' }}</dd>
+          <dt>การแก้ไขเบื้องต้น</dt><dd>{{ detail.initialFix || '-' }}</dd>
+          <dt>แผนแก้ไข</dt><dd>{{ detail.fixPlan || '-' }}</dd>
+          <dt>ผู้รับผิดชอบ</dt><dd>{{ detail.responsiblePerson || '-' }}</dd>
+          <dt>ผู้รายงาน</dt><dd>{{ detail.reporterName }} · {{ fmtDateTime(detail.createdAt) }}</dd>
+          <dt v-if="detail.updatedBy">อัปเดตล่าสุด</dt><dd v-if="detail.updatedBy">{{ detail.updatedBy }} · {{ fmtDateTime(detail.updatedAt) }}</dd>
+          <dt>สถานะ</dt><dd><span class="badge" :class="'st-'+statusIdx(detail.status)"><i :class="statusIcon(detail.status)"></i>{{ detail.status }}</span></dd>
+        </dl>
+        <div v-if="isAdmin" class="field">
+          <label for="dt-status">เปลี่ยนสถานะ</label>
+          <select id="dt-status" class="select" v-model="detailStatus"><option v-for="s in STATUS" :key="s" :value="s">{{ s }}</option></select>
+        </div>
+      </div>
+      <div class="modal-f">
+        <button v-if="isAdmin" class="btn btn-ghost" style="margin-right:auto;color:var(--red-600)" @click="removeReport(detail)"><i class="fas fa-trash"></i> ลบ</button>
+        <button class="btn btn-ghost" @click="detail=null">ปิด</button>
+        <button v-if="isAdmin" class="btn" @click="updateStatus" :disabled="busy.status || detailStatus===detail.status"><i :class="busy.status ? 'fas fa-spinner spin' : 'fas fa-check'"></i> บันทึกสถานะ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ User modal ============ -->
+  <div class="overlay" v-if="userModal.open" @click.self="userModal.open=false">
+    <form class="modal sm" role="dialog" aria-modal="true" @submit.prevent="saveUser" novalidate>
+      <div class="modal-h"><h3>{{ userModal.isNew ? 'เพิ่มผู้ใช้' : 'แก้ไขผู้ใช้' }}</h3><button type="button" class="iconbtn" @click="userModal.open=false" aria-label="ปิด"><i class="fas fa-xmark"></i></button></div>
+      <div class="modal-b">
+        <div class="field"><label for="u-name">ชื่อผู้ใช้</label>
+          <input id="u-name" class="input" v-model.trim="userModal.data.username" :readonly="!userModal.isNew" autocapitalize="none" placeholder="a-z, 0-9, _ . -  (3–30 ตัว)"></div>
+        <div class="field"><label for="u-disp">ชื่อที่แสดง</label>
+          <input id="u-disp" class="input" v-model.trim="userModal.data.displayName" maxlength="100"></div>
+        <div class="field"><label for="u-role">บทบาท</label>
+          <select id="u-role" class="select" v-model="userModal.data.role"><option value="user">ผู้ใช้งาน</option><option value="admin">ผู้ดูแลระบบ</option></select></div>
+        <div class="field"><label for="u-st">สถานะ</label>
+          <select id="u-st" class="select" v-model="userModal.data.status"><option value="active">ใช้งานอยู่</option><option value="inactive">ระงับ</option></select></div>
+        <div class="field"><label for="u-pw">{{ userModal.isNew ? 'รหัสผ่าน' : 'รหัสผ่านใหม่' }}</label>
+          <input id="u-pw" class="input" type="password" v-model="userModal.data.password" autocomplete="new-password" :placeholder="userModal.isNew ? 'อย่างน้อย 6 ตัวอักษร' : 'เว้นว่างหากไม่ต้องการเปลี่ยน'"></div>
+        <div v-if="userErr" class="alert alert-err"><i class="fas fa-circle-exclamation"></i><span>{{ userErr }}</span></div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn btn-ghost" @click="userModal.open=false">ยกเลิก</button>
+        <button type="submit" class="btn" :disabled="busy.user"><i :class="busy.user ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i> บันทึก</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ Confirm modal ============ -->
+  <div class="overlay" v-if="confirm.open" style="z-index:80">
+    <div class="modal sm" role="alertdialog" aria-modal="true">
+      <div class="modal-h"><h3>{{ confirm.title }}</h3></div>
+      <div class="modal-b"><p>{{ confirm.message }}</p></div>
+      <div class="modal-f">
+        <button class="btn btn-ghost" @click="answer(false)">ยกเลิก</button>
+        <button class="btn" :class="{'btn-danger': confirm.danger}" @click="answer(true)">{{ confirm.okText }}</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
