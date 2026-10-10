@@ -254,3 +254,81 @@ legend i{color:var(--amber-500)}
   .f3,.f2{grid-template-columns:1fr}
   .chipgrid{grid-template-columns:repeat(2,1fr)}
 }
+
+/* ---------- compact mobile (ปรับขนาดบนมือถือให้เล็กลง) ---------- */
+@media (max-width:720px){
+  body{font-size:14px;line-height:1.5}
+  .btn{padding:8px 14px;font-size:14px;gap:6px}
+  .btn-sm{padding:4px 9px;font-size:12.5px}
+  .input,.select,.textarea{padding:8px 10px;border-radius:8px}
+  .textarea{min-height:76px}
+  .field>label,.field>.lbl,.rform .field>label,.rform .field>.lbl{font-size:13px}
+  .err,.hint{font-size:12px}
+
+  .topbar::before{height:4px}
+  .topbar-in{padding:6px 12px;gap:8px}
+  .brand{gap:8px}
+  .brand img{width:34px;height:34px;border-radius:9px}
+  .brand h1{font-size:14px}
+  .avatar{width:28px;height:28px;font-size:13px}
+  .iconbtn{width:32px;height:32px;font-size:13px}
+  .tab{padding:6px 4px;font-size:10.5px;gap:1px}
+  .tab i{font-size:16px}
+
+  main.page{padding:12px 12px 78px}
+  .page-head{margin-bottom:10px;gap:8px}
+  .page-head h2{font-size:19px}
+  .page-head p{font-size:12.5px}
+  .card-pad{padding:14px}
+  .card-title{font-size:14.5px;margin-bottom:8px}
+
+  .stats{gap:8px;margin-bottom:10px}
+  .stat{padding:10px 12px;border-left-width:5px}
+  .stat b{font-size:24px}
+  .stat span{font-size:12px}
+  .legend,.zones{font-size:12px;gap:8px 12px}
+  .mcell{height:30px;min-width:30px;font-size:13px;border-radius:6px}
+  .matrix th{font-size:12px}
+  table.matrix{min-width:480px}
+  .chip{padding:4px 10px;font-size:13px}
+
+  table.tbl{font-size:13px}
+  .tbl th{padding:8px 9px}
+  .tbl td{padding:8px 9px}
+  .badge{font-size:12px;padding:1px 8px}
+  .lv{min-width:22px;padding:0 6px;font-size:12px}
+  .filters{padding:10px;gap:8px}
+  .list-meta{padding:8px 10px;font-size:13px}
+
+  .rform{padding:14px}
+  .sec{font-size:15px;margin:20px 0 10px;gap:8px}
+  .tile{width:26px;height:26px;font-size:12px;border-radius:7px}
+  .f3,.f2{gap:10px}
+  .drop{padding:16px 10px}
+  .drop i{font-size:18px}
+  .drop p{font-size:13px}
+  .pchip{padding:8px 6px;font-size:13.5px;border-radius:10px}
+  .chipgrid{gap:8px}
+  .seg button{padding:8px 6px;font-size:14px}
+  .btn-save{padding:9px 16px}
+  .actions{padding-top:12px}
+  .sevnote{font-size:12px}
+
+  .overlay{padding:10px}
+  .modal-h{padding:10px 14px}
+  .modal-h h3{font-size:15px}
+  .modal-b{padding:14px;gap:10px}
+  .modal-f{padding:10px 14px}
+  .dl dt{font-size:12.5px}
+  .toast{font-size:13.5px;padding:10px 12px}
+
+  .login{padding:16px}
+  .login-card{padding:54px 20px 20px;border-radius:18px}
+  .login-logo{width:84px;height:84px;top:-42px;border-radius:22px}
+  .login-card h1{font-size:19px}
+  .login-card .sub{margin-bottom:16px}
+}
+/* iOS จะซูมหน้าเองถ้าฟอนต์ในช่องกรอก < 16px */
+@supports (-webkit-touch-callout:none){
+  .input,.select,.textarea{font-size:16px}
+}
