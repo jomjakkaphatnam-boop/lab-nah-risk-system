@@ -493,8 +493,34 @@
 
 </div>
 
+<div id="boot-error" hidden style="max-width:560px;margin:40px auto;padding:20px;background:#fff;border-left:6px solid #b8322f;border-radius:12px;font-family:Sarabun,system-ui,sans-serif;box-shadow:0 6px 18px -8px rgba(0,0,0,.3)">
+  <h2 style="margin:0 0 8px;font-size:18px">เปิดระบบไม่สำเร็จ</h2>
+  <p style="margin:0 0 8px">กด <b>Ctrl+Shift+R</b> เพื่อรีโหลด ถ้ายังเป็นอยู่ให้ส่งข้อความด้านล่างนี้ให้ผู้ดูแล</p>
+  <pre id="boot-msg" style="white-space:pre-wrap;background:#f4f4f0;padding:10px;border-radius:8px;font-size:13px;margin:0"></pre>
+</div>
+<script>
+  window.__bootErrors = [];
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    window.__bootErrors.push(t && (t.src || t.href) ? 'โหลดไฟล์ไม่ได้: ' + (t.src || t.href) : (e.message || 'error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''));
+  }, true);
+</script>
 <script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+<script>window.Vue || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.38/vue.global.prod.min.js"><\/script>')</script>
+<script>window.Vue || document.write('<script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"><\/script>')</script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<script>
+  // ถ้า 3 วินาทีแล้วแอปยังไม่เริ่ม ให้แสดงสาเหตุแทนหน้าเปล่า
+  setTimeout(function () {
+    var app = document.getElementById('app');
+    if (app && app.hasAttribute('v-cloak')) {
+      var m = window.__bootErrors.slice();
+      if (!window.Vue) m.unshift('โหลด Vue ไม่ได้ (เครือข่ายอาจบล็อก cdn.jsdelivr.net / cdnjs / unpkg)');
+      document.getElementById('boot-msg').textContent = m.join('\n') || 'ไม่ทราบสาเหตุ — เปิด F12 > Console เพื่อดูข้อความ';
+      document.getElementById('boot-error').hidden = false;
+    }
+  }, 3000);
+</script>
 </body>
 </html>
