@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ระบบรายงานความเสี่ยง LAB NAH</title>
+  <title>ระบบรายงานความเสี่ยง NAH</title>
   <meta name="description" content="Medical Lab Risk Management System — ระบบรายงานความเสี่ยงและอุบัติการณ์ห้องปฏิบัติการ">
   <meta name="theme-color" content="#3b4d23">
   <link rel="icon" href="icons/favicon.ico" sizes="any">
@@ -152,7 +152,7 @@
             <span style="--c:var(--zone-low)">A–B ยังไม่ถึงผู้ป่วย</span>
             <span style="--c:var(--zone-mid)">C–D ถึงผู้ป่วย ไม่มีอันตราย/ต้องเฝ้าระวัง</span>
             <span style="--c:var(--zone-high)">E–I เกิดอันตราย</span>
-            <span class="hint">คลิกช่องเพื่อดูรายการ</span>
+            <span class="hint">คลิกช่องเพื่อดูรายการ · รายงานที่เลือกหลายโปรแกรมนับในทุกโปรแกรมที่เลือก</span>
           </div>
         </div>
 
@@ -187,94 +187,115 @@
         <div class="page-head">
           <div><h2>รายงานความเสี่ยง/อุบัติการณ์</h2><p>กรอกข้อมูลให้ครบ ช่องที่มี <span class="req">*</span> จำเป็นต้องกรอก</p></div>
         </div>
-        <form class="card card-pad" @submit.prevent="saveReport" novalidate>
-          <fieldset>
-            <legend><i class="fas fa-file-pen"></i> ข้อมูลเหตุการณ์</legend>
-            <div class="form-grid">
-              <div class="field">
-                <label for="f-date">วันเดือนปีที่เกิดเหตุ <span class="req">*</span></label>
-                <input id="f-date" type="date" class="input" :class="{bad: errors.date}" v-model="form.date" :max="today">
-                <span class="err" v-if="errors.date">{{ errors.date }}</span>
-              </div>
-              <div class="field">
-                <label for="f-code">รหัสความเสี่ยง</label>
-                <input id="f-code" type="text" class="input" v-model.trim="form.riskCode" placeholder="ระบุรหัสความเสี่ยง (ถ้ามี)" maxlength="100">
-              </div>
-              <div class="field span2">
-                <label for="f-subject">รหัส : เรื่อง <span class="req">*</span></label>
-                <input id="f-subject" type="text" class="input" :class="{bad: errors.subject}" v-model.trim="form.subject" placeholder="เช่น LAB-03 : ติดฉลากหลอดเลือดผิดคน" maxlength="300">
-                <span class="err" v-if="errors.subject">{{ errors.subject }}</span>
-              </div>
-              <div class="field span2">
-                <label for="f-detail">ความเสี่ยง/อุบัติการณ์ (รายละเอียด) <span class="req">*</span></label>
-                <textarea id="f-detail" class="textarea" :class="{bad: errors.detail}" v-model.trim="form.detail" placeholder="อธิบายว่าเกิดอะไรขึ้น ที่ไหน กับใคร และผลที่ตามมา" maxlength="5000"></textarea>
-                <span class="err" v-if="errors.detail">{{ errors.detail }}</span>
-              </div>
-            </div>
-          </fieldset>
+        <form class="card card-pad rform" @submit.prevent="saveReport" novalidate>
 
-          <fieldset>
-            <legend><i class="fas fa-gauge-high"></i> ระดับความรุนแรง</legend>
-            <div class="form-grid">
-              <div class="field">
-                <label for="f-clin">ระดับความรุนแรงด้านคลินิก</label>
-                <select id="f-clin" class="select" v-model="form.clinicalLevel">
-                  <option value="">-- เลือก --</option>
-                  <option v-for="c in CLINICAL" :key="c.v" :value="c.v">{{ c.v }} — {{ c.t }}</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="f-sup">ระดับความรุนแรงด้านสนับสนุน</label>
-                <select id="f-sup" class="select" v-model="form.supportLevel">
-                  <option value="">-- เลือก --</option>
-                  <option v-for="s in SUPPORT" :key="s.v" :value="s.v">{{ s.v }} — {{ s.t }}</option>
-                </select>
-              </div>
-              <div class="field span2">
-                <label for="f-prog">โปรแกรมความเสี่ยงที่เกี่ยวข้อง</label>
-                <select id="f-prog" class="select" v-model="form.relatedProgram">
-                  <option value="">-- เลือก --</option>
-                  <option v-for="p in PROGRAMS" :key="p" :value="p">{{ p }}</option>
-                </select>
-              </div>
-              <div class="span2">
-                <div class="sevnote">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(form)) }}</b> จากระดับที่เลือก</div>
-                <div class="guide">
-                  <div class="g1"><b>ต่ำ</b> · คลินิก A–B / สนับสนุน 1–2</div>
-                  <div class="g2"><b>กลาง</b> · คลินิก C–D / สนับสนุน 3</div>
-                  <div class="g3"><b>สูง</b> · คลินิก E–I / สนับสนุน 4–5</div>
-                </div>
-              </div>
+          <h3 class="sec"><span class="tile"><i class="fas fa-file-lines"></i></span> ข้อมูลความเสี่ยง / อุบัติการณ์</h3>
+          <div class="f3">
+            <div class="field">
+              <label for="f-date">วัน/เดือน/ปี ที่เกิดเหตุ <span class="req">*</span></label>
+              <input id="f-date" type="date" class="input" :class="{bad: errors.date}" v-model="form.date" :max="today">
+              <span class="err" v-if="errors.date">{{ errors.date }}</span>
             </div>
-          </fieldset>
+            <div class="field">
+              <label for="f-code">รหัสความเสี่ยง</label>
+              <input id="f-code" type="text" class="input" value="" placeholder="ไม่ต้องกรอก (ระบบสร้างให้)" readonly>
+            </div>
+            <div class="field">
+              <label for="f-subject">รหัส : เรื่อง <span class="req">*</span></label>
+              <input id="f-subject" type="text" class="input" :class="{bad: errors.subject}" v-model.trim="form.subject" list="subject-list" placeholder="เลือกหรือพิมพ์รหัส เช่น CPL202" maxlength="300" autocomplete="off">
+              <datalist id="subject-list"><option v-for="o in subjectOptions" :key="o" :value="o"></option></datalist>
+              <span class="err" v-if="errors.subject">{{ errors.subject }}</span>
+            </div>
+          </div>
+          <div class="field mt">
+            <label for="f-detail">รายละเอียดความเสี่ยง/อุบัติการณ์ <span class="req">*</span></label>
+            <textarea id="f-detail" class="textarea" :class="{bad: errors.detail}" v-model.trim="form.detail" placeholder="ระบุเหตุการณ์และข้อเท็จจริงที่เกิดขึ้น..." maxlength="5000"></textarea>
+            <span class="err" v-if="errors.detail">{{ errors.detail }}</span>
+          </div>
 
-          <fieldset>
-            <legend><i class="fas fa-screwdriver-wrench"></i> การแก้ไขและผู้รับผิดชอบ</legend>
-            <div class="form-grid">
-              <div class="field">
-                <label for="f-fix">การแก้ไขเบื้องต้น</label>
-                <textarea id="f-fix" class="textarea" v-model.trim="form.initialFix" placeholder="ระบุการแก้ไขเบื้องต้นที่ทำไปแล้ว" maxlength="3000"></textarea>
-              </div>
-              <div class="field">
-                <label for="f-plan">แผนแก้ไข</label>
-                <textarea id="f-plan" class="textarea" v-model.trim="form.fixPlan" placeholder="ระบุแผนแก้ไข/ป้องกันไม่ให้เกิดซ้ำ" maxlength="3000"></textarea>
-              </div>
-              <div class="field">
-                <label for="f-resp">ผู้รับผิดชอบระดับหน่วยงาน</label>
-                <input id="f-resp" type="text" class="input" v-model.trim="form.responsiblePerson" maxlength="200">
-              </div>
-              <div class="field">
-                <label for="f-rep">ผู้รายงาน (ดึงชื่ออัตโนมัติ)</label>
-                <input id="f-rep" type="text" class="input" :value="user.displayName" readonly>
+          <div class="field mt">
+            <span class="lbl">รูปภาพประกอบ (ถ้ามี)</span>
+            <div class="drop" :class="{over: dragOver, busy: busy.img}" tabindex="0" role="button" aria-label="เลือกรูปภาพประกอบ"
+                 @click="$refs.file.click()" @keydown.enter.prevent="$refs.file.click()" @keydown.space.prevent="$refs.file.click()"
+                 @dragover.prevent="dragOver=true" @dragleave.prevent="dragOver=false" @drop.prevent="onDrop">
+              <i :class="busy.img ? 'fas fa-spinner spin' : 'fas fa-paperclip'"></i>
+              <p>{{ busy.img ? 'กำลังเตรียมรูป...' : 'คลิกเพื่อเลือกรูป หรือลากไฟล์มาวางที่นี่ (ไม่เกิน ' + MAX_IMAGE_MB + ' MB)' }}</p>
+              <small>แนบได้สูงสุด {{ MAX_IMAGES }} รูป · {{ form.images.length }}/{{ MAX_IMAGES }}</small>
+            </div>
+            <input ref="file" type="file" accept="image/*" multiple hidden @change="onPick">
+            <ul class="thumbs" v-if="form.images.length">
+              <li v-for="(im, i) in form.images" :key="i" class="thumb">
+                <img :src="im.url" :alt="im.name" @click="lightbox = im.url">
+                <span class="tn">{{ im.name }}<br><small>{{ fmtSize(im.size) }}</small></span>
+                <button type="button" class="x" @click="removeImage(i)" :aria-label="'ลบรูป ' + im.name"><i class="fas fa-xmark"></i></button>
+              </li>
+            </ul>
+          </div>
+
+          <h3 class="sec"><span class="tile amber"><i class="fas fa-triangle-exclamation"></i></span> ระดับความรุนแรง</h3>
+          <div class="f2">
+            <div class="field">
+              <label for="f-clin">ระดับความรุนแรงด้านคลินิก (A - I)</label>
+              <select id="f-clin" class="select" v-model="form.clinicalLevel">
+                <option value="">-- ไม่ระบุ / ไม่ใช่ด้านคลินิก --</option>
+                <option v-for="c in CLINICAL" :key="c.v" :value="c.v">ระดับ {{ c.v }} ({{ c.t }})</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-sup">ระดับความรุนแรงด้านสนับสนุน (1 - 5)</label>
+              <select id="f-sup" class="select" v-model="form.supportLevel">
+                <option value="">-- ไม่ระบุ / ไม่ใช่ด้านสนับสนุน --</option>
+                <option v-for="s in SUPPORT" :key="s.v" :value="s.v">ระดับ {{ s.v }} ({{ s.t }})</option>
+              </select>
+            </div>
+          </div>
+          <div class="sevnote mt">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(form)) }}</b> · ต่ำ = A–B / 1–2 · กลาง = C–D / 3 · สูง = E–I / 4–5</div>
+
+          <h3 class="sec"><span class="tile amber"><i class="fas fa-tags"></i></span> โปรแกรมความเสี่ยงที่เกี่ยวข้อง <small>(เลือกได้มากกว่า 1 ข้อ)</small></h3>
+          <div class="chipgrid" role="group" aria-label="โปรแกรมความเสี่ยงที่เกี่ยวข้อง">
+            <button v-for="p in PROGRAMS" :key="p" type="button" class="pchip" :class="{on: form.programs.indexOf(p) >= 0}"
+                    :aria-pressed="form.programs.indexOf(p) >= 0" @click="toggleProgram(p)">{{ p }}</button>
+          </div>
+
+          <h3 class="sec"><span class="tile"><i class="fas fa-screwdriver-wrench"></i></span> การแก้ไขและผู้รายงาน</h3>
+          <div class="f2">
+            <div class="field">
+              <span class="lbl" id="fx-l">สถานะการแก้ไข</span>
+              <div class="seg" role="radiogroup" aria-labelledby="fx-l">
+                <button v-for="o in FIX_STATUS" :key="o" type="button" role="radio" :aria-checked="form.fixStatus===o" :class="{on: form.fixStatus===o}" @click="form.fixStatus=o">{{ o }}</button>
               </div>
             </div>
-          </fieldset>
+            <div class="field">
+              <label for="f-res">ผลลัพธ์</label>
+              <input id="f-res" type="text" class="input" v-model.trim="form.result" placeholder="เช่น แก้ไขเรียบร้อย, อยู่ระหว่างดำเนินการ" maxlength="1000">
+            </div>
+            <div class="field">
+              <label for="f-fix">การแก้ไขเบื้องต้น</label>
+              <textarea id="f-fix" class="textarea" v-model.trim="form.initialFix" placeholder="มาตรการแก้ไขเฉพาะหน้า..." maxlength="3000"></textarea>
+            </div>
+            <div class="field">
+              <label for="f-plan">แผนแก้ไข</label>
+              <textarea id="f-plan" class="textarea" v-model.trim="form.fixPlan" placeholder="แนวทางป้องกันระยะยาว..." maxlength="3000"></textarea>
+            </div>
+            <div class="field">
+              <label for="f-resp">ผู้รับผิดชอบระดับหน่วยงาน</label>
+              <select id="f-resp" class="select" v-model="form.responsiblePerson">
+                <option value="">-- เลือกหน่วยงานที่รับผิดชอบ --</option>
+                <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-rep">ผู้รายงาน <span class="req">*</span></label>
+              <input id="f-rep" type="text" class="input" :class="{bad: errors.reporterName}" v-model.trim="form.reporterName" placeholder="ชื่อ-สกุล ผู้รายงาน" maxlength="100">
+              <span class="err" v-if="errors.reporterName">{{ errors.reporterName }}</span>
+            </div>
+          </div>
 
           <div class="actions">
             <button type="button" class="btn btn-ghost" @click="resetForm" :disabled="busy.save">ล้างฟอร์ม</button>
-            <button type="submit" class="btn" :disabled="busy.save">
+            <button type="submit" class="btn btn-save" :disabled="busy.save || busy.img">
               <i :class="busy.save ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i>
-              {{ busy.save ? 'กำลังบันทึก...' : 'บันทึกรายงาน' }}
+              {{ busy.save ? (form.images.length ? 'กำลังอัปโหลดและบันทึก...' : 'กำลังบันทึก...') : 'บันทึกข้อมูลรายงานความเสี่ยง' }}
             </button>
           </div>
         </form>
@@ -318,8 +339,8 @@
                 <tr v-for="r in filtered" :key="r.id" class="click" tabindex="0" @click="openDetail(r)" @keydown.enter="openDetail(r)">
                   <td class="id">{{ r.id }}</td>
                   <td>{{ fmtDate(r.date) }}</td>
-                  <td class="subj"><b>{{ r.subject }}</b></td>
-                  <td>{{ r.relatedProgram || '-' }}</td>
+                  <td class="subj"><b>{{ r.subject }}</b><small v-if="r.images && r.images.length" class="hint"><i class="fas fa-image"></i> {{ r.images.length }} รูป</small></td>
+                  <td>{{ progText(r) }}</td>
                   <td>
                     <span class="lv" :class="sevOf(r)" :title="'ความเสี่ยง' + sevLabel(sevOf(r))">{{ r.clinicalLevel || '–' }}</span>
                     <span class="lv" :class="sevOf({supportLevel:r.supportLevel})">{{ r.supportLevel || '–' }}</span>
@@ -391,20 +412,30 @@
         <dl class="dl">
           <dt>เรื่อง</dt><dd><b>{{ detail.subject }}</b></dd>
           <dt>วันที่เกิดเหตุ</dt><dd>{{ fmtDate(detail.date) }}</dd>
-          <dt>รหัสความเสี่ยง</dt><dd>{{ detail.riskCode || '-' }}</dd>
           <dt>รายละเอียด</dt><dd>{{ detail.detail }}</dd>
           <dt>ความรุนแรง</dt>
           <dd>คลินิก <span class="lv" :class="sevOf({clinicalLevel:detail.clinicalLevel})">{{ detail.clinicalLevel || '–' }}</span>
               สนับสนุน <span class="lv" :class="sevOf({supportLevel:detail.supportLevel})">{{ detail.supportLevel || '–' }}</span>
               · ความเสี่ยง<b>{{ sevLabel(sevOf(detail)) }}</b></dd>
-          <dt>โปรแกรม</dt><dd>{{ detail.relatedProgram || '-' }}</dd>
+          <dt>โปรแกรม</dt><dd>{{ progText(detail) }}</dd>
+          <dt>สถานะการแก้ไข</dt><dd>{{ detail.fixStatus || '-' }}</dd>
+          <dt>ผลลัพธ์</dt><dd>{{ detail.result || '-' }}</dd>
           <dt>การแก้ไขเบื้องต้น</dt><dd>{{ detail.initialFix || '-' }}</dd>
           <dt>แผนแก้ไข</dt><dd>{{ detail.fixPlan || '-' }}</dd>
-          <dt>ผู้รับผิดชอบ</dt><dd>{{ detail.responsiblePerson || '-' }}</dd>
+          <dt>หน่วยงานที่รับผิดชอบ</dt><dd>{{ detail.responsiblePerson || '-' }}</dd>
           <dt>ผู้รายงาน</dt><dd>{{ detail.reporterName }} · {{ fmtDateTime(detail.createdAt) }}</dd>
           <dt v-if="detail.updatedBy">อัปเดตล่าสุด</dt><dd v-if="detail.updatedBy">{{ detail.updatedBy }} · {{ fmtDateTime(detail.updatedAt) }}</dd>
           <dt>สถานะ</dt><dd><span class="badge" :class="'st-'+statusIdx(detail.status)"><i :class="statusIcon(detail.status)"></i>{{ detail.status }}</span></dd>
         </dl>
+        <div v-if="detailImages.length">
+          <span class="lbl" style="font-weight:600;font-size:14px;color:var(--ink-soft)">รูปภาพประกอบ</span>
+          <ul class="gallery">
+            <li v-for="im in detailImages" :key="im.id">
+              <img v-if="im.url" :src="im.url" :alt="im.name" @click="lightbox = im.url">
+              <span v-else class="ph"><i :class="im.loading ? 'fas fa-spinner spin' : 'fas fa-image'"></i></span>
+            </li>
+          </ul>
+        </div>
         <div v-if="isAdmin" class="field">
           <label for="dt-status">เปลี่ยนสถานะ</label>
           <select id="dt-status" class="select" v-model="detailStatus"><option v-for="s in STATUS" :key="s" :value="s">{{ s }}</option></select>
@@ -440,6 +471,12 @@
         <button type="submit" class="btn" :disabled="busy.user"><i :class="busy.user ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i> บันทึก</button>
       </div>
     </form>
+  </div>
+
+  <!-- ============ Lightbox ============ -->
+  <div class="overlay lightbox" v-if="lightbox" style="z-index:85" @click="lightbox=''">
+    <img :src="lightbox" alt="รูปภาพประกอบ">
+    <button class="iconbtn" aria-label="ปิด" @click="lightbox=''"><i class="fas fa-xmark"></i></button>
   </div>
 
   <!-- ============ Confirm modal ============ -->

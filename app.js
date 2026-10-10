@@ -2,25 +2,31 @@
 (function () {
   'use strict';
 
-  const CFG = Object.assign({ API_URL: '', SESSION_HOURS: 6 }, window.NAH_CONFIG || {});
+  const CFG = Object.assign({
+    API_URL: '', SESSION_HOURS: 6, SUBJECT_SUGGESTIONS: [],
+    UNITS: ['3A', '3B', 'ER', 'ICU', 'พิเศษ 5', 'พยาธิ', 'สาธารณูปโภค', 'OPD', 'ไตเทียม', 'MRI', 'ห้องเจาะเลือด']
+  }, window.NAH_CONFIG || {});
+  const UNITS = CFG.UNITS;
+  const FIX_STATUS = ['แก้ไขได้', 'แก้ไขไม่ได้'];
+  const MAX_IMAGES = 5, MAX_IMAGE_MB = 5;
   const DEMO = !String(CFG.API_URL || '').trim();
 
   const STATUS = ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น'];
   const PROGRAMS = ['PCT', 'IC', 'PTC', 'ENV', 'HRD', 'Lab', 'ETHIC', 'IT', 'เวชระเบียน', 'อื่นๆ'];
   const CLINICAL = [
-    { v: 'A', t: 'มีเหตุการณ์ที่อาจเกิดความผิดพลาด' },
-    { v: 'B', t: 'เกิดความผิดพลาดแต่ไม่ถึงผู้ป่วย' },
+    { v: 'A', t: 'ยังไม่เกิด แต่มีโอกาส' },
+    { v: 'B', t: 'เกิดแต่ไม่ถึงผู้ป่วย' },
     { v: 'C', t: 'ถึงผู้ป่วย แต่ไม่เกิดอันตราย' },
-    { v: 'D', t: 'ถึงผู้ป่วย ต้องเฝ้าระวังเพิ่ม' },
-    { v: 'E', t: 'อันตรายชั่วคราว ต้องรักษาเพิ่ม' },
-    { v: 'F', t: 'อันตรายชั่วคราว ต้องนอน รพ./นอนนานขึ้น' },
-    { v: 'G', t: 'พิการถาวร' },
-    { v: 'H', t: 'ต้องช่วยชีวิต' },
+    { v: 'D', t: 'ต้องเฝ้าระวังเพิ่มขึ้น' },
+    { v: 'E', t: 'เกิดอันตรายชั่วคราว/ต้องรักษา' },
+    { v: 'F', t: 'นอน รพ. นานขึ้น' },
+    { v: 'G', t: 'เกิดความพิการถาวร' },
+    { v: 'H', t: 'ต้องช่วยกู้ชีพ' },
     { v: 'I', t: 'เสียชีวิต' }
   ];
   const SUPPORT = [
-    { v: '1', t: 'น้อยที่สุด' }, { v: '2', t: 'น้อย' }, { v: '3', t: 'ปานกลาง' },
-    { v: '4', t: 'มาก' }, { v: '5', t: 'รุนแรงที่สุด' }
+    { v: '1', t: 'ผลกระทบน้อยมาก' }, { v: '2', t: 'ผลกระทบเล็กน้อย' }, { v: '3', t: 'ผลกระทบปานกลาง' },
+    { v: '4', t: 'ผลกระทบสูง' }, { v: '5', t: 'ผลกระทบรุนแรงมาก/วิกฤต' }
   ];
   const SEV_RANK = { none: 0, low: 1, mid: 2, high: 3 };
   const SEV_LABEL = { none: 'ยังไม่ระบุ', low: 'ต่ำ', mid: 'กลาง', high: 'สูง' };
@@ -29,7 +35,28 @@
   const pad = (n, l) => String(n).padStart(l || 2, '0');
   const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   const nowIso = () => { const d = new Date(); return ymd(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
-  const blankForm = () => ({ date: '', riskCode: '', subject: '', detail: '', clinicalLevel: '', supportLevel: '', relatedProgram: '', initialFix: '', fixPlan: '', responsiblePerson: '' });
+  const blankForm = name => ({ date: '', subject: '', detail: '', clinicalLevel: '', supportLevel: '', programs: [], fixStatus: FIX_STATUS[0], result: '', initialFix: '', fixPlan: '', responsiblePerson: '', reporterName: name || '', images: [] });
+  const progList = r => String(r.relatedProgram || '').split(',').map(x => x.trim()).filter(Boolean);
+  const parseArr = v => { if (Array.isArray(v)) return v; try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const norm = r => Object.assign({}, r, { images: parseArr(r.images) });
+  const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+  /* ย่อรูปก่อนอัปโหลด (ด้านยาวสุด 1600px, JPEG) เพื่อให้ส่งเร็วและไม่เกินขีดจำกัดของ Apps Script */
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
   const clone = o => JSON.parse(JSON.stringify(o));
 
   function levelOf(clinical, support) {
@@ -65,10 +92,11 @@
       const d = day(x[0]);
       return {
         id: 'R' + d.getFullYear() + pad(d.getMonth() + 1) + '-' + pad(i + 1, 4),
-        createdAt: ymd(d) + 'T09:00:00', date: ymd(d), riskCode: '', subject: x[1], detail: x[2],
+        createdAt: ymd(d) + 'T09:00:00', date: ymd(d), riskCode: 'R' + d.getFullYear() + pad(d.getMonth() + 1) + '-' + pad(i + 1, 4), subject: x[1], detail: x[2],
         clinicalLevel: x[3], supportLevel: x[4], relatedProgram: x[5],
         initialFix: 'แจ้งหัวหน้างานและบันทึกเหตุการณ์', fixPlan: 'ทบทวนขั้นตอนปฏิบัติงานและอบรมทีม',
-        responsiblePerson: 'หัวหน้าห้องปฏิบัติการ', reporterName: 'ข้อมูลตัวอย่าง', status: x[6], updatedAt: '', updatedBy: ''
+        responsiblePerson: 'ห้องเจาะเลือด', reporterName: 'ข้อมูลตัวอย่าง', status: x[6], updatedAt: '', updatedBy: '',
+        fixStatus: 'แก้ไขได้', result: '', images: [], createdBy: 'demo'
       };
     });
   }
@@ -112,9 +140,22 @@
         const r = req.report, list = demoDb.reports();
         const now = new Date(), prefix = 'R' + now.getFullYear() + pad(now.getMonth() + 1) + '-';
         const seq = list.reduce((m, x) => x.id.indexOf(prefix) === 0 ? Math.max(m, Number(x.id.slice(prefix.length)) || 0) : m, 0) + 1;
-        const rec = Object.assign({}, r, { id: prefix + pad(seq, 4), createdAt: nowIso(), reporterName: me.displayName, status: STATUS[0], updatedAt: '', updatedBy: '' });
+        const id = prefix + pad(seq, 4);
+        const saved = (r.images || []).slice(0, MAX_IMAGES).map((im, i) => {
+          const fid = 'img-' + id + '-' + (i + 1);
+          store.set('nah_demo_' + fid, 'data:' + im.mime + ';base64,' + im.data);
+          return { id: fid, name: id + '_' + (i + 1) + '.jpg' };
+        });
+        const rec = Object.assign({}, r, {
+          id, riskCode: id, createdAt: nowIso(), status: STATUS[0], updatedAt: '', updatedBy: '',
+          relatedProgram: (r.relatedProgram || []).join(', '), images: saved, createdBy: me.username
+        });
         list.push(rec); store.set('nah_demo_reports', list);
-        return ok({ message: 'บันทึกรายงานเรียบร้อย (' + rec.id + ')', data: rec });
+        return ok({ message: 'บันทึกรายงานเรียบร้อย (' + id + ')', data: rec });
+      }
+      case 'getImage': {
+        const d = store.get('nah_demo_' + req.fileId);
+        return d ? ok({ dataUrl: d }) : no('เปิดรูปไม่ได้');
       }
       case 'updateStatus': {
         const e = needAdmin(); if (e) return e;
@@ -175,15 +216,15 @@
       return {
         demo: DEMO, user: null, token: '', tab: 'dashboard',
         login: { username: '', password: '', show: false, error: '' },
-        busy: { login: false, save: false, load: false, user: false, reset: false, status: false },
+        busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false },
         reports: [], users: [],
         f: { q: '', status: '', program: '', sev: '', clinical: '', support: '' },
         form: blankForm(), errors: {},
-        detail: null, detailStatus: '',
+        detail: null, detailStatus: '', detailImages: [], lightbox: '', dragOver: false,
         userModal: { open: false, isNew: true, data: {} }, userErr: '',
         confirm: { open: false, title: '', message: '', okText: 'ยืนยัน', danger: false, resolve: null },
         resetText: '', toasts: [], toastSeq: 0, today: ymd(new Date()),
-        STATUS, PROGRAMS, CLINICAL, SUPPORT
+        STATUS, PROGRAMS, CLINICAL, SUPPORT, UNITS, FIX_STATUS, MAX_IMAGES, MAX_IMAGE_MB
       };
     },
 
@@ -214,10 +255,12 @@
         this.reports.forEach(r => {
           const i = CLINICAL.findIndex(c => c.v === r.clinicalLevel);
           if (i < 0) return;
-          const p = r.relatedProgram || '';
-          if (p && keys.indexOf(p) < 0) keys.push(p);
-          (map[p] = map[p] || CLINICAL.map(() => 0))[i]++;
           cols[i]++;
+          const ps = progList(r);
+          (ps.length ? ps : ['']).forEach(p => {
+            if (p && keys.indexOf(p) < 0) keys.push(p);
+            (map[p] = map[p] || CLINICAL.map(() => 0))[i]++;
+          });
         });
         if (map['']) keys.push('');
         const rows = keys.map(p => {
@@ -226,6 +269,11 @@
         });
         const max = Math.max(1, ...rows.map(r => Math.max(...r.cells)));
         return { rows, cols, max };
+      },
+      subjectOptions() {
+        const set = {}; CFG.SUBJECT_SUGGESTIONS.forEach(x => { set[x] = 1; });
+        this.reports.forEach(r => { if (r.subject) set[r.subject] = 1; });
+        return Object.keys(set).slice(0, 200);
       },
       supportCounts() {
         const o = {}; SUPPORT.forEach(s => { o[s.v] = this.reports.filter(r => r.supportLevel === s.v).length; }); return o;
@@ -236,7 +284,7 @@
         const f = this.f, q = f.q.toLowerCase();
         return this.reports.filter(r =>
           (!f.status || r.status === f.status) &&
-          (!f.program || r.relatedProgram === f.program) &&
+          (!f.program || progList(r).indexOf(f.program) >= 0) &&
           (!f.sev || this.sevOf(r) === f.sev) &&
           (!f.clinical || r.clinicalLevel === f.clinical) &&
           (!f.support || r.supportLevel === f.support) &&
@@ -247,6 +295,8 @@
 
     methods: {
       /* ---- display helpers ---- */
+      progText(r) { return progList(r).join(', ') || '-'; },
+      fmtSize,
       sevOf(r) { return levelOf(r.clinicalLevel, r.supportLevel); },
       sevLabel(s) { return SEV_LABEL[s] || SEV_LABEL.none; },
       zoneOf(c) { const i = 'ABCDEFGHI'.indexOf(c); return i >= 4 ? 'z-high' : i >= 2 ? 'z-mid' : 'z-low'; },
@@ -306,6 +356,7 @@
         this.saveSession(Date.now() + CFG.SESSION_HOURS * 3600 * 1000);
         this.login = { username: '', password: '', show: false, error: '' };
         this.tab = 'dashboard';
+        this.resetForm();
         this.refresh();
       },
       logout(msg) {
@@ -326,7 +377,7 @@
         this.busy.load = true;
         const res = await this.api('listReports');
         this.busy.load = false;
-        if (res.success) this.reports = res.data || [];
+        if (res.success) this.reports = (res.data || []).map(norm);
         else if (res.code !== 'AUTH') this.toast(res.message, 'err');
       },
       async loadUsers() {
@@ -348,13 +399,35 @@
       clearFilters() { this.f = { q: '', status: '', program: '', sev: '', clinical: '', support: '' }; },
 
       /* ---- reports ---- */
-      resetForm() { this.form = blankForm(); this.errors = {}; },
+      resetForm() { this.form = blankForm(this.user ? this.user.displayName : ''); this.errors = {}; },
+      toggleProgram(p) {
+        const i = this.form.programs.indexOf(p);
+        if (i >= 0) this.form.programs.splice(i, 1); else this.form.programs.push(p);
+      },
+      onPick(e) { const fs = Array.from(e.target.files || []); e.target.value = ''; this.addFiles(fs); },
+      onDrop(e) { this.dragOver = false; this.addFiles(Array.from((e.dataTransfer && e.dataTransfer.files) || [])); },
+      async addFiles(files) {
+        if (!files.length) return;
+        this.busy.img = true;
+        for (const f of files) {
+          if (this.form.images.length >= MAX_IMAGES) { this.toast('แนบรูปได้ไม่เกิน ' + MAX_IMAGES + ' รูป', 'err'); break; }
+          if (!/^image\//.test(f.type)) { this.toast('"' + f.name + '" ไม่ใช่ไฟล์รูปภาพ', 'err'); continue; }
+          if (f.size > MAX_IMAGE_MB * 1048576) { this.toast('"' + f.name + '" ใหญ่เกิน ' + MAX_IMAGE_MB + ' MB', 'err'); continue; }
+          try {
+            const url = await compressImage(f);
+            this.form.images.push({ name: f.name, size: f.size, url });
+          } catch (e) { this.toast('เปิดไฟล์ "' + f.name + '" ไม่ได้ (ไม่รองรับรูปแบบนี้)', 'err'); }
+        }
+        this.busy.img = false;
+      },
+      removeImage(i) { this.form.images.splice(i, 1); },
       validate() {
         const e = {}, f = this.form;
         if (!f.date) e.date = 'กรุณาเลือกวันที่เกิดเหตุ';
         else if (f.date > this.today) e.date = 'วันที่เกิดเหตุต้องไม่เป็นวันในอนาคต';
         if (!f.subject) e.subject = 'กรุณากรอก "รหัส : เรื่อง"';
         if (!f.detail) e.detail = 'กรุณากรอกรายละเอียดความเสี่ยง/อุบัติการณ์';
+        if (!f.reporterName) e.reporterName = 'กรุณากรอกชื่อ-สกุล ผู้รายงาน';
         this.errors = e;
         return !Object.keys(e).length;
       },
@@ -362,7 +435,13 @@
         this.today = ymd(new Date());
         if (!this.validate()) { this.toast('กรุณากรอกข้อมูลที่มีเครื่องหมาย * ให้ครบถ้วน', 'err'); return; }
         this.busy.save = true;
-        const res = await this.api('saveReport', { report: clone(this.form) });
+        const fm = this.form;
+        const report = Object.assign(clone(Object.assign({}, fm, { images: [] })), {
+          relatedProgram: fm.programs.slice(),
+          images: fm.images.map(im => ({ name: im.name, mime: 'image/jpeg', data: im.url.split(',')[1] }))
+        });
+        delete report.programs;
+        const res = await this.api('saveReport', { report });
         this.busy.save = false;
         if (!res.success) { if (res.code !== 'AUTH') this.toast(res.message, 'err'); return; }
         this.toast(res.message);
@@ -371,7 +450,17 @@
         this.clearFilters();
         this.setTab('list');
       },
-      openDetail(r) { this.detail = r; this.detailStatus = r.status; },
+      async openDetail(r) {
+        this.detail = r; this.detailStatus = r.status; this.detailImages = [];
+        for (const im of (r.images || [])) {
+          const slot = { id: im.id, name: im.name, url: '', loading: true };
+          this.detailImages.push(slot);
+          const res = await this.api('getImage', { reportId: r.id, fileId: im.id });
+          if (this.detail !== r) return;
+          slot.loading = false;
+          if (res.success) slot.url = res.dataUrl;
+        }
+      },
       async updateStatus() {
         const d = this.detail;
         this.busy.status = true;
@@ -392,9 +481,10 @@
       },
       exportCsv() {
         const cols = [
-          ['id', 'รหัสรายงาน'], ['date', 'วันที่เกิดเหตุ'], ['riskCode', 'รหัสความเสี่ยง'], ['subject', 'เรื่อง'], ['detail', 'รายละเอียด'],
+          ['id', 'รหัสรายงาน'], ['date', 'วันที่เกิดเหตุ'], ['subject', 'เรื่อง'], ['detail', 'รายละเอียด'],
           ['clinicalLevel', 'ระดับคลินิก'], ['supportLevel', 'ระดับสนับสนุน'], ['relatedProgram', 'โปรแกรม'],
-          ['initialFix', 'การแก้ไขเบื้องต้น'], ['fixPlan', 'แผนแก้ไข'], ['responsiblePerson', 'ผู้รับผิดชอบ'],
+          ['fixStatus', 'สถานะการแก้ไข'], ['result', 'ผลลัพธ์'],
+          ['initialFix', 'การแก้ไขเบื้องต้น'], ['fixPlan', 'แผนแก้ไข'], ['responsiblePerson', 'ผู้รับผิดชอบหน่วยงาน'],
           ['reporterName', 'ผู้รายงาน'], ['status', 'สถานะ'], ['createdAt', 'บันทึกเมื่อ']
         ];
         const esc = v => {
@@ -458,13 +548,15 @@
       const s = store.get('nah_session');
       if (s && s.token && s.user && s.exp > Date.now()) {
         this.token = s.token; this.user = s.user;
+        this.resetForm();
         this.refresh();
       } else if (s) {
         store.del('nah_session');
       }
       document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (this.confirm.open) this.answer(false);
+        if (this.lightbox) this.lightbox = '';
+        else if (this.confirm.open) this.answer(false);
         else if (this.userModal.open) this.userModal.open = false;
         else if (this.detail) this.detail = null;
       });

@@ -1,4 +1,4 @@
-# ระบบรายงานความเสี่ยง LAB NAH
+# ระบบรายงานความเสี่ยง NAH
 
 Medical Lab Risk Management System — หน้าเว็บ (โฮสต์บน GitHub Pages) + Google Sheets เป็นฐานข้อมูลผ่าน Google Apps Script
 
@@ -24,10 +24,17 @@ Code.gs                                        ← วางใน Google Apps S
 
 > ถ้าแก้ `Code.gs` ภายหลัง ต้อง Deploy → Manage deployments → Edit → **New version** ทุกครั้ง
 
+### รูปภาพประกอบ (Google Drive)
+- รูปถูกย่อเป็น JPEG ด้านยาวสุด 1600px ก่อนอัปโหลด (รับไฟล์ต้นฉบับไม่เกิน 5 MB, สูงสุด 5 รูป/รายงาน)
+- เก็บในโฟลเดอร์ `NAH Risk - รูปประกอบ` ใน Drive ของบัญชีที่ Deploy (เปลี่ยนโฟลเดอร์ได้ที่ `DRIVE_FOLDER_ID` ใน `Code.gs`)
+- ไฟล์เป็นส่วนตัว ไม่เปิดสาธารณะ หน้าเว็บดึงรูปผ่าน API ต่อเมื่อล็อกอินแล้วเท่านั้น
+- หลังวาง `Code.gs` เวอร์ชันนี้ ให้รัน `setup()` ซ้ำหนึ่งครั้งเพื่ออนุญาตสิทธิ์ Drive แล้ว Deploy เป็น **New version**
+
 ## 2) เชื่อมหน้าเว็บ
 แก้ `config.js`:
 ```js
 window.NAH_CONFIG = { API_URL: 'https://script.google.com/macros/s/xxxxxxxx/exec', SESSION_HOURS: 6 };
+// รายชื่อหน่วยงาน (UNITS) และรหัสเรื่องแนะนำ (SUBJECT_SUGGESTIONS) แก้ได้ในไฟล์เดียวกัน
 ```
 
 ## 3) ขึ้น GitHub Pages
@@ -42,7 +49,7 @@ window.NAH_CONFIG = { API_URL: 'https://script.google.com/macros/s/xxxxxxxx/exec
 
 ## โครงสร้างข้อมูล
 - `Users`: `username | password | role | status | displayName` (role = admin/user, status = active/inactive)
-- `Reports`: `id, createdAt, date, riskCode, subject, detail, clinicalLevel, supportLevel, relatedProgram, initialFix, fixPlan, responsiblePerson, reporterName, status, updatedAt, updatedBy`
+- `Reports`: `id, createdAt, date, riskCode, subject, detail, clinicalLevel, supportLevel, relatedProgram, initialFix, fixPlan, responsiblePerson, reporterName, status, updatedAt, updatedBy, fixStatus, result, images, createdBy` (relatedProgram เก็บหลายค่าคั่นด้วยจุลภาค, images เก็บ ID ไฟล์ใน Drive)
 
 ## เกณฑ์ระดับความเสี่ยง (ปรับได้ที่ฟังก์ชัน `levelOf` ใน `app.js`)
 | ระดับ | คลินิก | สนับสนุน |

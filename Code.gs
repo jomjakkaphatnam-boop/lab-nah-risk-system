@@ -21,13 +21,23 @@ const REPORT_HEADERS = [
   'id', 'createdAt', 'date', 'riskCode', 'subject', 'detail',
   'clinicalLevel', 'supportLevel', 'relatedProgram',
   'initialFix', 'fixPlan', 'responsiblePerson', 'reporterName',
-  'status', 'updatedAt', 'updatedBy'
+  'status', 'updatedAt', 'updatedBy',
+  'fixStatus', 'result', 'images', 'createdBy'
 ];
 
+const FIX_STATUSES = ['แก้ไขได้', 'แก้ไขไม่ได้'];
 const STATUSES = ['รอดำเนินการ', 'กำลังดำเนินการ', 'เสร็จสิ้น'];
 const PROGRAMS = ['PCT', 'IC', 'PTC', 'ENV', 'HRD', 'Lab', 'ETHIC', 'IT', 'เวชระเบียน', 'อื่นๆ'];
 const CLINICAL_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 const SUPPORT_LEVELS = ['1', '2', '3', '4', '5'];
+
+// รูปประกอบเก็บใน Google Drive ของบัญชีที่ Deploy สคริปต์ (เป็นไฟล์ส่วนตัว ไม่เปิดสาธารณะ)
+// เว้นว่างไว้ = สร้างโฟลเดอร์ใหม่ให้อัตโนมัติ หรือใส่ ID โฟลเดอร์ที่ต้องการเอง
+const DRIVE_FOLDER_ID = '';
+const DRIVE_FOLDER_NAME = 'NAH Risk - รูปประกอบ';
+const MAX_IMAGES = 5;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 const SESSION_TTL = 6 * 60 * 60;   // วินาที (สูงสุดของ CacheService คือ 6 ชม.)
 const MAX_LOGIN_FAILS = 5;         // ใส่รหัสผิดได้กี่ครั้ง
@@ -66,6 +76,7 @@ function route_(req) {
   switch (req.action) {
     case 'logout':       return logout_(req);
     case 'listReports':  return listReports_();
+    case 'getImage':     return getImage_(req);
     case 'saveReport':   return saveReport_(req, user);
     case 'updateStatus': return requireAdmin_(user) || updateStatus_(req, user);
     case 'deleteReport': return requireAdmin_(user) || deleteReport_(req);
@@ -152,20 +163,43 @@ function saveReport_(req, user) {
   const date = String(r.date || '').trim();
   const subject = clean_(r.subject, 300);
   const detail = clean_(r.detail, 5000);
+  const reporterName = clean_(r.reporterName, 100);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail_('รูปแบบวันที่ไม่ถูกต้อง');
   if (!subject) return fail_('กรุณากรอก "รหัส : เรื่อง"');
   if (!detail) return fail_('กรุณากรอกรายละเอียดความเสี่ยง/อุบัติการณ์');
+  if (!reporterName) return fail_('กรุณากรอกชื่อ-สกุล ผู้รายงาน');
 
   const clinicalLevel = String(r.clinicalLevel || '');
   const supportLevel = String(r.supportLevel || '');
-  const relatedProgram = String(r.relatedProgram || '');
   if (clinicalLevel && CLINICAL_LEVELS.indexOf(clinicalLevel) < 0) return fail_('ระดับความรุนแรงด้านคลินิกไม่ถูกต้อง');
   if (supportLevel && SUPPORT_LEVELS.indexOf(supportLevel) < 0) return fail_('ระดับความรุนแรงด้านสนับสนุนไม่ถูกต้อง');
-  if (relatedProgram && PROGRAMS.indexOf(relatedProgram) < 0) return fail_('โปรแกรมความเสี่ยงไม่ถูกต้อง');
+
+  // โปรแกรมเลือกได้หลายข้อ
+  let programs = Array.isArray(r.relatedProgram) ? r.relatedProgram : String(r.relatedProgram || '').split(',');
+  programs = programs.map(x => String(x).trim()).filter((x, i, arr) => x && arr.indexOf(x) === i);
+  for (let i = 0; i < programs.length; i++) {
+    if (PROGRAMS.indexOf(programs[i]) < 0) return fail_('โปรแกรมความเสี่ยงไม่ถูกต้อง: ' + programs[i]);
+  }
+
+  const fixStatus = FIX_STATUSES.indexOf(r.fixStatus) >= 0 ? r.fixStatus : FIX_STATUSES[0];
+
+  // ตรวจรูปภาพก่อนเข้า lock
+  const imgs = Array.isArray(r.images) ? r.images : [];
+  if (imgs.length > MAX_IMAGES) return fail_('แนบรูปได้ไม่เกิน ' + MAX_IMAGES + ' รูป');
+  const blobs = [];
+  for (let i = 0; i < imgs.length; i++) {
+    const ext = IMAGE_TYPES[imgs[i].mime];
+    if (!ext) return fail_('รองรับเฉพาะไฟล์รูปภาพ (JPG, PNG, WEBP, GIF)');
+    let bytes;
+    try { bytes = Utilities.base64Decode(String(imgs[i].data || '')); } catch (e) { return fail_('ไฟล์รูปภาพเสียหาย'); }
+    if (!bytes.length) return fail_('ไฟล์รูปภาพว่างเปล่า');
+    if (bytes.length > MAX_IMAGE_BYTES) return fail_('รูปภาพต้องมีขนาดไม่เกิน 5 MB');
+    blobs.push({ bytes: bytes, mime: imgs[i].mime, ext: ext });
+  }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
   try {
     const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
     const tz = Session.getScriptTimeZone();
@@ -176,34 +210,85 @@ function saveReport_(req, user) {
     readRows_(sh, REPORT_HEADERS).forEach(x => {
       if (x.id.indexOf(prefix) === 0) maxSeq = Math.max(maxSeq, Number(x.id.slice(prefix.length)) || 0);
     });
+    const id = prefix + ('0000' + (maxSeq + 1)).slice(-4);
+
+    let saved = [];
+    if (blobs.length) {
+      const folder = getImageFolder_();
+      saved = blobs.map((b, i) => {
+        const name = id + '_' + (i + 1) + '.' + b.ext;
+        const f = folder.createFile(Utilities.newBlob(b.bytes, b.mime, name));
+        return { id: f.getId(), name: name };
+      });
+    }
 
     const report = {
-      id: prefix + ('0000' + (maxSeq + 1)).slice(-4),
+      id: id,
       createdAt: Utilities.formatDate(now, tz, "yyyy-MM-dd'T'HH:mm:ss"),
       date: date,
-      riskCode: clean_(r.riskCode, 100),
+      riskCode: id,
       subject: subject,
       detail: detail,
       clinicalLevel: clinicalLevel,
       supportLevel: supportLevel,
-      relatedProgram: relatedProgram,
+      relatedProgram: programs.join(', '),
       initialFix: clean_(r.initialFix, 3000),
       fixPlan: clean_(r.fixPlan, 3000),
       responsiblePerson: clean_(r.responsiblePerson, 200),
-      reporterName: user.displayName,
+      reporterName: reporterName,
       status: STATUSES[0],
       updatedAt: '',
-      updatedBy: ''
+      updatedBy: '',
+      fixStatus: fixStatus,
+      result: clean_(r.result, 1000),
+      images: JSON.stringify(saved),
+      createdBy: user.username
     };
 
     const row = sh.getLastRow() + 1;
     sh.getRange(row, 1, 1, REPORT_HEADERS.length)
       .setNumberFormat('@')
       .setValues([REPORT_HEADERS.map(h => report[h])]);
-    return { success: true, message: 'บันทึกรายงานเรียบร้อย (' + report.id + ')', data: report };
+    return { success: true, message: 'บันทึกรายงานเรียบร้อย (' + id + ')', data: report };
   } finally {
     lock.releaseLock();
   }
+}
+
+/** ส่งรูปกลับเป็น data URL (ต้องล็อกอิน และต้องเป็นรูปที่ผูกกับรายงานนั้นจริง) */
+function getImage_(req) {
+  const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
+  const rep = readRows_(sh, REPORT_HEADERS).find(x => x.id === req.reportId);
+  if (!rep) return fail_('ไม่พบรายงานนี้');
+  let list = [];
+  try { list = JSON.parse(rep.images || '[]'); } catch (e) {}
+  if (!list.some(x => x.id === req.fileId)) return fail_('ไม่พบรูปภาพนี้');
+  try {
+    const blob = DriveApp.getFileById(req.fileId).getBlob();
+    const mime = blob.getContentType();
+    if (!IMAGE_TYPES[mime]) return fail_('ชนิดไฟล์ไม่ถูกต้อง');
+    return { success: true, dataUrl: 'data:' + mime + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
+  } catch (e) {
+    return fail_('เปิดรูปไม่ได้ (อาจถูกลบออกจาก Drive แล้ว)');
+  }
+}
+
+function getImageFolder_() {
+  if (DRIVE_FOLDER_ID) return DriveApp.getFolderById(DRIVE_FOLDER_ID);
+  const props = PropertiesService.getScriptProperties();
+  const saved = props.getProperty('IMAGE_FOLDER_ID');
+  if (saved) {
+    try { return DriveApp.getFolderById(saved); } catch (e) { /* โฟลเดอร์ถูกลบ -> สร้างใหม่ */ }
+  }
+  const f = DriveApp.createFolder(DRIVE_FOLDER_NAME);
+  props.setProperty('IMAGE_FOLDER_ID', f.getId());
+  return f;
+}
+
+function trashImages_(imagesJson) {
+  let list = [];
+  try { list = JSON.parse(imagesJson || '[]'); } catch (e) {}
+  list.forEach(x => { try { DriveApp.getFileById(x.id).setTrashed(true); } catch (e) {} });
 }
 
 function updateStatus_(req, user) {
@@ -230,6 +315,7 @@ function deleteReport_(req) {
     const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
     const found = readRows_(sh, REPORT_HEADERS).find(x => x.id === req.id);
     if (!found) return fail_('ไม่พบรายงานนี้');
+    trashImages_(found.images);
     sh.deleteRow(found._row);
     return { success: true, message: 'ลบรายงานแล้ว' };
   } finally {
@@ -244,6 +330,7 @@ function resetData_(req) {
   try {
     const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
     const last = sh.getLastRow();
+    readRows_(sh, REPORT_HEADERS).forEach(x => trashImages_(x.images));
     if (last > 1) sh.getRange(2, 1, last - 1, REPORT_HEADERS.length).clearContent();
     return { success: true, message: 'ลบรายการความเสี่ยงทั้งหมดแล้ว' };
   } finally {
@@ -327,6 +414,7 @@ function deleteUser_(req, me) {
 function setup() {
   const users = getSheet_(SHEET_USERS, USER_HEADERS);
   getSheet_(SHEET_REPORTS, REPORT_HEADERS);
+  getImageFolder_();   // สร้างโฟลเดอร์รูปใน Drive และขอสิทธิ์ Drive
 
   if (users.getLastRow() < 2) {
     users.getRange(2, 1, 1, 5).setNumberFormat('@')
@@ -348,6 +436,13 @@ function getSheet_(name, headers) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers])
       .setFontWeight('bold').setBackground('#3b4d23').setFontColor('#ffffff');
     sh.setFrozenRows(1);
+  } else if (name === SHEET_REPORTS) {
+    // ชีตเก่าที่ยังไม่มีคอลัมน์ใหม่ -> เติมหัวคอลัมน์ให้อัตโนมัติ
+    const cur = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+    if (cur.join('|') !== headers.join('|')) {
+      sh.getRange(1, 1, 1, headers.length).setValues([headers])
+        .setFontWeight('bold').setBackground('#3b4d23').setFontColor('#ffffff');
+    }
   }
   return sh;
 }
