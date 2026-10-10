@@ -1,4 +1,4 @@
-# ระบบรายงานความเสี่ยง NAH
+# ระบบรายงานความเสี่ยง LAB NAH
 
 Medical Lab Risk Management System — หน้าเว็บ (โฮสต์บน GitHub Pages) + Google Sheets เป็นฐานข้อมูลผ่าน Google Apps Script
 
