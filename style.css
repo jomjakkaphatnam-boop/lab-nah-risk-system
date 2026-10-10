@@ -332,3 +332,36 @@ legend i{color:var(--amber-500)}
 @supports (-webkit-touch-callout:none){
   .input,.select,.textarea{font-size:16px}
 }
+
+/* ---------- แก้หน้าจอล้น (ให้พอดีจอ) ---------- */
+.page,.card,.grid-2>*,.field,.stat{min-width:0}
+.grid-2{grid-template-columns:minmax(0,1fr)}
+.stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.filters{grid-template-columns:2fr repeat(5,minmax(0,1fr))}
+.f3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.f2,.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+input[type=date]{display:block;min-width:0;max-width:100%;-webkit-appearance:none;appearance:none;min-height:40px;text-align:left}
+.matrix th.rowh{position:sticky;left:0;background:#fff;z-index:1}
+.matrix tfoot th.rowh{background:#fff}
+@media (max-width:900px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .filters .search{grid-column:1/-1}
+}
+@media (max-width:720px){
+  .f3,.f2,.form-grid{grid-template-columns:minmax(0,1fr)}
+  .brand h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand>div{min-width:0}
+  .page-head .btn{flex:none}
+  .stat b{font-size:22px}
+  /* Risk Matrix ให้พอดีจอ ไม่ต้องเลื่อนข้าง */
+  table.matrix{min-width:0;width:100%;border-spacing:2px}
+  .matrix th.rowh{white-space:normal;font-size:11px;line-height:1.15;width:54px;max-width:54px;padding-right:2px}
+  .matrix th{font-size:11px;padding:2px 0}
+  .matrix .tot{font-size:12px}
+  .mcell{min-width:0;height:26px;font-size:12px;border-radius:5px}
+}
+@media (max-width:420px){
+  .filters{grid-template-columns:minmax(0,1fr)}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
