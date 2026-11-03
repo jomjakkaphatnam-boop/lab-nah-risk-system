@@ -2,12 +2,13 @@
  * ระบบรายงานความเสี่ยง NAH — Backend (Google Apps Script Web App / JSON API)
  *
  * วิธีใช้งานอย่างย่อ
- *  1) วางไฟล์นี้ใน Apps Script  2) รันฟังก์ชัน setup() หนึ่งครั้ง (อนุญาตสิทธิ์)
+ *  1) วางไฟล์นี้ใน Apps Script พร้อมไฟล์ SheetImages.gs และ Month.gs
+ *  2) รันฟังก์ชัน setup() หนึ่งครั้ง (อนุญาตสิทธิ์)
  *  3) Deploy > New deployment > Web app
  *       Execute as: Me   |   Who has access: Anyone
  *  4) คัดลอก Web app URL ไปใส่ใน config.js (API_URL) ของหน้าเว็บบน GitHub Pages
  *
- * หมายเหตุ: ทุกครั้งที่แก้ไขโค้ดนี้ต้อง Deploy > Manage deployments > Edit > New version
+ * หมายเหตุ: ทุกครั้งที่แก้ไขโค้ด ต้อง Deploy > Manage deployments > Edit > New version
  */
 
 const SPREADSHEET_ID = '1EpaKPx8j4g_g-pCnS5DC-KKttoWNvE_-kWJ8OPDMVPI';
@@ -22,7 +23,7 @@ const REPORT_HEADERS = [
   'clinicalLevel', 'supportLevel', 'relatedProgram',
   'initialFix', 'fixPlan', 'responsiblePerson', 'reporterName',
   'status', 'updatedAt', 'updatedBy',
-  'fixStatus', 'result', 'images', 'createdBy'
+  'fixStatus', 'result', 'images', 'createdBy', 'hn'
 ];
 
 const FIX_STATUSES = ['แก้ไขได้', 'แก้ไขไม่ได้'];
@@ -40,7 +41,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 const SESSION_TTL = 6 * 60 * 60;   // วินาที (สูงสุดของ CacheService คือ 6 ชม.)
-const MAX_LOGIN_FAILS = 5;         // ใส่รหัสผิดได้กี่ครั้ง
+const MAX_LOGIN_FAILS = 5;         // ใส่รหัสผ่านผิดได้กี่ครั้ง
 const LOCK_SECONDS = 5 * 60;       // ล็อกชั่วคราวหลังใส่ผิดเกินกำหนด
 const PASSWORD_SALT = 'NAH-RISK::';
 
@@ -74,17 +75,19 @@ function route_(req) {
   if (!user) return { success: false, code: 'AUTH', message: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' };
 
   switch (req.action) {
-    case 'logout':       return logout_(req);
-    case 'listReports':  return listReports_();
-    case 'getImage':     return getImage_(req);
-    case 'saveReport':   return saveReport_(req, user);
-    case 'updateStatus': return requireAdmin_(user) || updateStatus_(req, user);
-    case 'deleteReport': return requireAdmin_(user) || deleteReport_(req);
-    case 'listUsers':    return requireAdmin_(user) || listUsers_();
-    case 'saveUser':     return requireAdmin_(user) || saveUser_(req, user);
-    case 'deleteUser':   return requireAdmin_(user) || deleteUser_(req, user);
-    case 'resetData':    return requireAdmin_(user) || resetData_(req);
-    default:             return fail_('ไม่รู้จักคำสั่ง: ' + req.action);
+    case 'logout':           return logout_(req);
+    case 'listReports':      return listReports_();
+    case 'getImage':         return getImage_(req);
+    case 'saveReport':       return saveReport_(req, user);
+    case 'updateReport':     return requireAdmin_(user) || updateReport_(req, user);
+    case 'updateStatus':     return requireAdmin_(user) || updateStatus_(req, user);
+    case 'deleteReport':     return requireAdmin_(user) || deleteReport_(req);
+    case 'createMonthSheet': return requireAdmin_(user) || createMonthSheet_(req);   // อยู่ใน Month.gs
+    case 'listUsers':        return requireAdmin_(user) || listUsers_();
+    case 'saveUser':         return requireAdmin_(user) || saveUser_(req, user);
+    case 'deleteUser':       return requireAdmin_(user) || deleteUser_(req, user);
+    case 'resetData':        return requireAdmin_(user) || resetData_(req);
+    default:                 return fail_('ไม่รู้จักคำสั่ง: ' + req.action);
   }
 }
 
@@ -158,15 +161,25 @@ function listReports_() {
   return { success: true, data: rows };
 }
 
+/** ตรวจและแปลงรายการโปรแกรมเป็นอาร์เรย์ที่ไม่ซ้ำ; คืน null ถ้ามีค่าที่ไม่รู้จัก */
+function parsePrograms_(v) {
+  let programs = Array.isArray(v) ? v : String(v || '').split(',');
+  programs = programs.map(x => String(x).trim()).filter((x, i, arr) => x && arr.indexOf(x) === i);
+  for (let i = 0; i < programs.length; i++) {
+    if (PROGRAMS.indexOf(programs[i]) < 0) return { error: 'โปรแกรมความเสี่ยงไม่ถูกต้อง: ' + programs[i] };
+  }
+  return { list: programs };
+}
+
 function saveReport_(req, user) {
   const r = req.report || {};
   const date = String(r.date || '').trim();
-  const subject = clean_(r.subject, 300);
+  const subject = clean_(r.subject, 300);          // ไม่บังคับ — Admin จัดหมวดภายหลังได้
+  const hn = clean_(r.hn, 200);
   const detail = clean_(r.detail, 5000);
   const reporterName = clean_(r.reporterName, 100);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail_('รูปแบบวันที่ไม่ถูกต้อง');
-  if (!subject) return fail_('กรุณากรอก "รหัส : เรื่อง"');
   if (!detail) return fail_('กรุณากรอกรายละเอียดความเสี่ยง/อุบัติการณ์');
   if (!reporterName) return fail_('กรุณากรอกชื่อ-สกุล ผู้รายงาน');
 
@@ -175,12 +188,9 @@ function saveReport_(req, user) {
   if (clinicalLevel && CLINICAL_LEVELS.indexOf(clinicalLevel) < 0) return fail_('ระดับความรุนแรงด้านคลินิกไม่ถูกต้อง');
   if (supportLevel && SUPPORT_LEVELS.indexOf(supportLevel) < 0) return fail_('ระดับความรุนแรงด้านสนับสนุนไม่ถูกต้อง');
 
-  // โปรแกรมเลือกได้หลายข้อ
-  let programs = Array.isArray(r.relatedProgram) ? r.relatedProgram : String(r.relatedProgram || '').split(',');
-  programs = programs.map(x => String(x).trim()).filter((x, i, arr) => x && arr.indexOf(x) === i);
-  for (let i = 0; i < programs.length; i++) {
-    if (PROGRAMS.indexOf(programs[i]) < 0) return fail_('โปรแกรมความเสี่ยงไม่ถูกต้อง: ' + programs[i]);
-  }
+  const pg = parsePrograms_(r.relatedProgram);
+  if (pg.error) return fail_(pg.error);
+  const programs = pg.list;
 
   const fixStatus = FIX_STATUSES.indexOf(r.fixStatus) >= 0 ? r.fixStatus : FIX_STATUSES[0];
 
@@ -242,14 +252,65 @@ function saveReport_(req, user) {
       fixStatus: fixStatus,
       result: clean_(r.result, 1000),
       images: JSON.stringify(saved),
-      createdBy: user.username
+      createdBy: user.username,
+      hn: hn
     };
 
     const row = sh.getLastRow() + 1;
     sh.getRange(row, 1, 1, REPORT_HEADERS.length)
       .setNumberFormat('@')
       .setValues([REPORT_HEADERS.map(h => report[h])]);
+
+    // แสดงลิงก์/รูปตัวอย่างในชีต (SheetImages.gs) — ถ้าล้มเหลวไม่กระทบการบันทึก
+    if (saved.length && typeof syncImagesToSheet_ === 'function') {
+      try { syncImagesToSheet_(row); } catch (e) { console.error('syncImages', e); }
+    }
     return { success: true, message: 'บันทึกรายงานเรียบร้อย (' + id + ')', data: report };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** แก้ไขรายงาน (Admin เท่านั้น) — ไม่แตะ id / createdAt / riskCode / images / createdBy */
+function updateReport_(req, user) {
+  const r = req.report || {};
+  const date = String(r.date || '').trim();
+  const detail = clean_(r.detail, 5000);
+  const reporterName = clean_(r.reporterName, 100);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail_('รูปแบบวันที่ไม่ถูกต้อง');
+  if (!detail) return fail_('กรุณากรอกรายละเอียดความเสี่ยง/อุบัติการณ์');
+  if (!reporterName) return fail_('กรุณากรอกชื่อ-สกุล ผู้รายงาน');
+
+  const clinicalLevel = String(r.clinicalLevel || '');
+  const supportLevel = String(r.supportLevel || '');
+  if (clinicalLevel && CLINICAL_LEVELS.indexOf(clinicalLevel) < 0) return fail_('ระดับความรุนแรงด้านคลินิกไม่ถูกต้อง');
+  if (supportLevel && SUPPORT_LEVELS.indexOf(supportLevel) < 0) return fail_('ระดับความรุนแรงด้านสนับสนุนไม่ถูกต้อง');
+  if (STATUSES.indexOf(r.status) < 0) return fail_('สถานะไม่ถูกต้อง');
+  if (FIX_STATUSES.indexOf(r.fixStatus) < 0) return fail_('สถานะการแก้ไขไม่ถูกต้อง');
+
+  const pg = parsePrograms_(r.relatedProgram);
+  if (pg.error) return fail_(pg.error);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
+    const found = readRows_(sh, REPORT_HEADERS).find(x => x.id === req.id);
+    if (!found) return fail_('ไม่พบรายงานนี้');
+
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+    const next = {
+      date: date, subject: clean_(r.subject, 300), hn: clean_(r.hn, 200), detail: detail,
+      clinicalLevel: clinicalLevel, supportLevel: supportLevel, relatedProgram: pg.list.join(', '),
+      initialFix: clean_(r.initialFix, 3000), fixPlan: clean_(r.fixPlan, 3000),
+      responsiblePerson: clean_(r.responsiblePerson, 200), reporterName: reporterName,
+      status: r.status, fixStatus: r.fixStatus, result: clean_(r.result, 1000),
+      updatedAt: now, updatedBy: user.displayName
+    };
+    Object.keys(next).forEach(k => {
+      sh.getRange(found._row, REPORT_HEADERS.indexOf(k) + 1).setNumberFormat('@').setValue(next[k]);
+    });
+    return { success: true, message: 'บันทึกการแก้ไขแล้ว', data: Object.assign({}, stripRow_(found), next) };
   } finally {
     lock.releaseLock();
   }
@@ -331,7 +392,7 @@ function resetData_(req) {
     const sh = getSheet_(SHEET_REPORTS, REPORT_HEADERS);
     const last = sh.getLastRow();
     readRows_(sh, REPORT_HEADERS).forEach(x => trashImages_(x.images));
-    if (last > 1) sh.getRange(2, 1, last - 1, REPORT_HEADERS.length).clearContent();
+    if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
     return { success: true, message: 'ลบรายการความเสี่ยงทั้งหมดแล้ว' };
   } finally {
     lock.releaseLock();
@@ -438,9 +499,16 @@ function getSheet_(name, headers) {
     sh.setFrozenRows(1);
   } else if (name === SHEET_REPORTS) {
     // ชีตเก่าที่ยังไม่มีคอลัมน์ใหม่ -> เติมหัวคอลัมน์ให้อัตโนมัติ
-    const cur = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+    const n = headers.length;
+    if (sh.getMaxColumns() < n) sh.insertColumnsAfter(sh.getMaxColumns(), n - sh.getMaxColumns());
+    let cur = sh.getRange(1, 1, 1, n).getValues()[0];
+    // ถ้าคอลัมน์สุดท้ายของชุดหัว (hn) มีข้อมูลอื่นอยู่ (เช่น คอลัมน์ลิงก์รูป) ให้แทรกคอลัมน์ใหม่แทนการเขียนทับ
+    if (cur[n - 1] && cur[n - 1] !== headers[n - 1]) {
+      sh.insertColumnBefore(n);
+      cur = sh.getRange(1, 1, 1, n).getValues()[0];
+    }
     if (cur.join('|') !== headers.join('|')) {
-      sh.getRange(1, 1, 1, headers.length).setValues([headers])
+      sh.getRange(1, 1, 1, n).setValues([headers])
         .setFontWeight('bold').setBackground('#3b4d23').setFontColor('#ffffff');
     }
   }

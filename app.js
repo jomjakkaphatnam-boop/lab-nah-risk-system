@@ -35,7 +35,7 @@
   const pad = (n, l) => String(n).padStart(l || 2, '0');
   const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   const nowIso = () => { const d = new Date(); return ymd(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
-  const blankForm = name => ({ date: '', subject: '', detail: '', clinicalLevel: '', supportLevel: '', programs: [], fixStatus: FIX_STATUS[0], result: '', initialFix: '', fixPlan: '', responsiblePerson: '', reporterName: name || '', images: [] });
+  const blankForm = name => ({ date: '', hn: '', detail: '', fixStatus: FIX_STATUS[0], result: '', initialFix: '', fixPlan: '', responsiblePerson: '', reporterName: name || '', images: [] });
   const progList = r => String(r.relatedProgram || '').split(',').map(x => x.trim()).filter(Boolean);
   const parseArr = v => { if (Array.isArray(v)) return v; try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
   const norm = r => Object.assign({}, r, { images: parseArr(r.images) });
@@ -165,6 +165,19 @@
         store.set('nah_demo_reports', list);
         return ok({ message: 'อัปเดตสถานะแล้ว', data: { id: r.id, status: r.status, updatedAt: r.updatedAt, updatedBy: r.updatedBy } });
       }
+      case 'updateReport': {
+        const e = needAdmin(); if (e) return e;
+        const list = demoDb.reports(), r = list.find(x => x.id === req.id), d = req.report || {};
+        if (!r) return no('ไม่พบรายงานนี้');
+        Object.assign(r, d, { relatedProgram: (d.relatedProgram || []).join(', '), updatedAt: nowIso(), updatedBy: me.displayName });
+        store.set('nah_demo_reports', list);
+        return ok({ message: 'บันทึกการแก้ไขแล้ว', data: r });
+      }
+      case 'createMonthSheet': {
+        const e = needAdmin(); if (e) return e;
+        const n = demoDb.reports().filter(x => String(x.date).slice(0, 7) === req.ym).length;
+        return ok({ data: { sheetName: req.ym + ' (สาธิต)', count: n, url: '#' } });
+      }
       case 'deleteReport': {
         const e = needAdmin(); if (e) return e;
         store.set('nah_demo_reports', demoDb.reports().filter(x => x.id !== req.id));
@@ -216,7 +229,10 @@
       return {
         demo: DEMO, user: null, token: '', tab: 'dashboard',
         login: { username: '', password: '', show: false, error: '' },
-        busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false },
+        busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false, edit: false, month: false },
+        now: Date.now(),
+        edit: { open: false, data: { programs: [] }, error: '' },
+        month: { ym: '', overwrite: false, result: null },
         reports: [], users: [],
         f: { q: '', status: '', program: '', sev: '', clinical: '', support: '' },
         form: blankForm(), errors: {},
@@ -229,6 +245,9 @@
     },
 
     computed: {
+      todayText() {
+        return new Date(this.now).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      },
       isAdmin() { return !!this.user && this.user.role === 'admin'; },
       initial() { return this.user ? (this.user.displayName || '?').trim().charAt(0).toUpperCase() : ''; },
       tabs() {
@@ -237,7 +256,7 @@
           { id: 'new', label: 'รายงานใหม่', icon: 'fas fa-file-circle-plus' },
           { id: 'list', label: 'รายการ', icon: 'fas fa-list-ul' }
         ];
-        if (this.isAdmin) t.push({ id: 'users', label: 'ผู้ใช้', icon: 'fas fa-users' }, { id: 'reset', label: 'Reset', icon: 'fas fa-trash-can' });
+        if (this.isAdmin) t.push({ id: 'users', label: 'ผู้ใช้', icon: 'fas fa-users' }, { id: 'month', label: 'เริ่มเดือนใหม่', icon: 'fas fa-calendar-plus' }, { id: 'reset', label: 'Reset', icon: 'fas fa-trash-can' });
         return t;
       },
       stats() {
@@ -288,7 +307,7 @@
           (!f.sev || this.sevOf(r) === f.sev) &&
           (!f.clinical || r.clinicalLevel === f.clinical) &&
           (!f.support || r.supportLevel === f.support) &&
-          (!q || [r.id, r.subject, r.detail, r.reporterName, r.riskCode, r.responsiblePerson].join(' ').toLowerCase().indexOf(q) >= 0)
+          (!q || [r.id, r.subject, r.hn, r.detail, r.reporterName, r.riskCode, r.responsiblePerson].join(' ').toLowerCase().indexOf(q) >= 0)
         );
       }
     },
@@ -363,7 +382,7 @@
         const t = this.token;
         store.del('nah_session');
         this.user = null; this.token = '';
-        if (t && !DEMO) fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', token: t }) }).catch(() => {}); this.reports = []; this.users = []; this.detail = null;
+        if (t && !DEMO) fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ action: 'logout', token: t }) }).catch(() => {}); this.reports = []; this.users = []; this.detail = null; this.edit.open = false; this.month.result = null;
         this.resetForm(); this.resetText = ''; this.clearFilters();
         if (typeof msg === 'string' && msg) this.login.error = msg;
       },
@@ -404,6 +423,54 @@
         const i = this.form.programs.indexOf(p);
         if (i >= 0) this.form.programs.splice(i, 1); else this.form.programs.push(p);
       },
+      /* ---- edit (admin) ---- */
+      openEdit(r) {
+        this.edit = {
+          open: true, error: '',
+          data: Object.assign({}, r, { hn: r.hn || '', programs: progList(r), fixStatus: r.fixStatus || FIX_STATUS[0], status: r.status || STATUS[0] })
+        };
+        this.detail = null;
+      },
+      closeEdit() { this.edit.open = false; },
+      toggleEditProgram(p) {
+        const a = this.edit.data.programs, i = a.indexOf(p);
+        if (i >= 0) a.splice(i, 1); else a.push(p);
+      },
+      async saveEdit() {
+        const d = this.edit.data;
+        if (!d.date) { this.edit.error = 'กรุณาเลือกวันที่เกิดเหตุ'; return; }
+        if (!d.detail) { this.edit.error = 'กรุณากรอกรายละเอียด'; return; }
+        if (!d.reporterName) { this.edit.error = 'กรุณากรอกชื่อผู้รายงาน'; return; }
+        this.edit.error = '';
+        this.busy.edit = true;
+        const res = await this.api('updateReport', { id: d.id, report: {
+          date: d.date, subject: d.subject || '', hn: d.hn || '', detail: d.detail,
+          clinicalLevel: d.clinicalLevel || '', supportLevel: d.supportLevel || '', relatedProgram: d.programs.slice(),
+          fixStatus: d.fixStatus, status: d.status, result: d.result || '',
+          responsiblePerson: d.responsiblePerson || '', initialFix: d.initialFix || '',
+          fixPlan: d.fixPlan || '', reporterName: d.reporterName } });
+        this.busy.edit = false;
+        if (!res.success) { if (res.code !== 'AUTH') this.edit.error = res.message; return; }
+        this.edit.open = false;
+        this.toast(res.message);
+        await this.loadReports();
+      },
+
+      /* ---- month sheet (admin) ---- */
+      async startMonth() {
+        if (!this.month.ym) return;
+        if (this.month.overwrite) {
+          const yes = await this.ask({ title: 'สร้างทับชีตเดิม', message: 'ชีตของเดือนนี้จะถูกลบและสร้างใหม่ ต้องการดำเนินการต่อหรือไม่?', okText: 'สร้างทับ', danger: true });
+          if (!yes) return;
+        }
+        this.busy.month = true; this.month.result = null;
+        const res = await this.api('createMonthSheet', { ym: this.month.ym, overwrite: this.month.overwrite });
+        this.busy.month = false;
+        if (!res.success) { if (res.code !== 'AUTH') this.toast(res.message, 'err'); return; }
+        this.month.result = res.data;
+        this.toast('สร้างชีตเดือนใหม่แล้ว');
+      },
+
       onPick(e) { const fs = Array.from(e.target.files || []); e.target.value = ''; this.addFiles(fs); },
       onDrop(e) { this.dragOver = false; this.addFiles(Array.from((e.dataTransfer && e.dataTransfer.files) || [])); },
       async addFiles(files) {
@@ -425,7 +492,6 @@
         const e = {}, f = this.form;
         if (!f.date) e.date = 'กรุณาเลือกวันที่เกิดเหตุ';
         else if (f.date > this.today) e.date = 'วันที่เกิดเหตุต้องไม่เป็นวันในอนาคต';
-        if (!f.subject) e.subject = 'กรุณากรอก "รหัส : เรื่อง"';
         if (!f.detail) e.detail = 'กรุณากรอกรายละเอียดความเสี่ยง/อุบัติการณ์';
         if (!f.reporterName) e.reporterName = 'กรุณากรอกชื่อ-สกุล ผู้รายงาน';
         this.errors = e;
@@ -437,10 +503,9 @@
         this.busy.save = true;
         const fm = this.form;
         const report = Object.assign(clone(Object.assign({}, fm, { images: [] })), {
-          relatedProgram: fm.programs.slice(),
+          relatedProgram: [],
           images: fm.images.map(im => ({ name: im.name, mime: 'image/jpeg', data: im.url.split(',')[1] }))
         });
-        delete report.programs;
         const res = await this.api('saveReport', { report });
         this.busy.save = false;
         if (!res.success) { if (res.code !== 'AUTH') this.toast(res.message, 'err'); return; }
@@ -481,7 +546,7 @@
       },
       exportCsv() {
         const cols = [
-          ['id', 'รหัสรายงาน'], ['date', 'วันที่เกิดเหตุ'], ['subject', 'เรื่อง'], ['detail', 'รายละเอียด'],
+          ['id', 'รหัสรายงาน'], ['date', 'วันที่เกิดเหตุ'], ['subject', 'เรื่อง'], ['hn', 'HN'], ['detail', 'รายละเอียด'],
           ['clinicalLevel', 'ระดับคลินิก'], ['supportLevel', 'ระดับสนับสนุน'], ['relatedProgram', 'โปรแกรม'],
           ['fixStatus', 'สถานะการแก้ไข'], ['result', 'ผลลัพธ์'],
           ['initialFix', 'การแก้ไขเบื้องต้น'], ['fixPlan', 'แผนแก้ไข'], ['responsiblePerson', 'ผู้รับผิดชอบหน่วยงาน'],
@@ -545,6 +610,9 @@
     },
 
     mounted() {
+      this._clock = setInterval(() => { this.now = Date.now(); }, 60000);
+      const nm = new Date(); nm.setDate(1); nm.setMonth(nm.getMonth() + 1);
+      this.month.ym = nm.getFullYear() + '-' + pad(nm.getMonth() + 1);
       const s = store.get('nah_session');
       if (s && s.token && s.user && s.exp > Date.now()) {
         this.token = s.token; this.user = s.user;
@@ -557,6 +625,7 @@
         if (e.key !== 'Escape') return;
         if (this.lightbox) this.lightbox = '';
         else if (this.confirm.open) this.answer(false);
+        else if (this.edit.open) this.edit.open = false;
         else if (this.userModal.open) this.userModal.open = false;
         else if (this.detail) this.detail = null;
       });

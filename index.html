@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ระบบรายงานความเสี่ยง NAH</title>
+  <title>ระบบรายงานความเสี่ยง LAB NAH</title>
   <meta name="description" content="Medical Lab Risk Management System — ระบบรายงานความเสี่ยงและอุบัติการณ์ห้องปฏิบัติการ">
   <meta name="theme-color" content="#3b4d23">
   <link rel="icon" href="icons/favicon.ico" sizes="any">
@@ -32,7 +32,7 @@
   <main v-if="!user" class="login">
     <section class="login-card">
       <img class="login-logo" src="icons/logo-128.png" alt="โลโก้ NAH">
-      <h1>ระบบรายงานความเสี่ยง NAH</h1>
+      <h1>ระบบรายงานความเสี่ยง LAB NAH</h1>
       <p class="sub">Medical Lab Risk Management System v2.0</p>
 
       <form @submit.prevent="doLogin" novalidate>
@@ -71,11 +71,12 @@
         <div class="brand">
           <img src="icons/logo-128.png" alt="">
           <div>
-            <h1>ระบบรายงานความเสี่ยง NAH</h1>
+            <h1>ระบบรายงานความเสี่ยง LAB NAH</h1>
             <p>Medical Lab Risk Management</p>
           </div>
         </div>
         <div class="spacer"></div>
+        <div class="today" :title="todayText"><i class="fas fa-calendar-day"></i><span>{{ todayText }}</span></div>
         <div class="who">
           <div class="avatar" aria-hidden="true">{{ initial }}</div>
           <div class="meta">{{ user.displayName }}<small>{{ isAdmin ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งาน' }}</small></div>
@@ -152,7 +153,7 @@
             <span style="--c:var(--zone-low)">A–B ยังไม่ถึงผู้ป่วย</span>
             <span style="--c:var(--zone-mid)">C–D ถึงผู้ป่วย ไม่มีอันตราย/ต้องเฝ้าระวัง</span>
             <span style="--c:var(--zone-high)">E–I เกิดอันตราย</span>
-            <span class="hint">คลิกช่องเพื่อดูรายการ · รายงานที่เลือกหลายโปรแกรมนับในทุกโปรแกรมที่เลือก</span>
+            <span class="hint">คลิกช่องเพื่อดูรายการ · รายงานที่เลือกหลายโปรแกรมนับในทุกโปรแกรมที่เลือก · นับเฉพาะรายงานที่ Admin จัดระดับแล้ว</span>
           </div>
         </div>
 
@@ -170,7 +171,7 @@
                 <tbody>
                   <tr v-for="r in recent" :key="r.id" class="click" @click="openDetail(r)">
                     <td class="id">{{ r.id }}</td>
-                    <td class="subj"><b>{{ r.subject }}</b></td>
+                    <td class="subj"><b>{{ r.subject || (r.detail || '').slice(0, 40) }}</b></td>
                     <td>{{ fmtDate(r.date) }}</td>
                     <td><span class="badge" :class="'st-'+statusIdx(r.status)">{{ r.status }}</span></td>
                   </tr>
@@ -190,7 +191,7 @@
         <form class="card card-pad rform" @submit.prevent="saveReport" novalidate>
 
           <h3 class="sec"><span class="tile"><i class="fas fa-file-lines"></i></span> ข้อมูลความเสี่ยง / อุบัติการณ์</h3>
-          <div class="f3">
+          <div class="f2">
             <div class="field">
               <label for="f-date">วัน/เดือน/ปี ที่เกิดเหตุ <span class="req">*</span></label>
               <input id="f-date" type="date" class="input" :class="{bad: errors.date}" v-model="form.date" :max="today">
@@ -200,18 +201,17 @@
               <label for="f-code">รหัสความเสี่ยง</label>
               <input id="f-code" type="text" class="input" value="" placeholder="ไม่ต้องกรอก (ระบบสร้างให้)" readonly>
             </div>
-            <div class="field">
-              <label for="f-subject">รหัส : เรื่อง <span class="req">*</span></label>
-              <input id="f-subject" type="text" class="input" :class="{bad: errors.subject}" v-model.trim="form.subject" list="subject-list" placeholder="เลือกหรือพิมพ์รหัส เช่น CPL202" maxlength="300" autocomplete="off">
-              <datalist id="subject-list"><option v-for="o in subjectOptions" :key="o" :value="o"></option></datalist>
-              <span class="err" v-if="errors.subject">{{ errors.subject }}</span>
-            </div>
+          </div>
+          <div class="field mt">
+            <label for="f-hn">HN ผู้ป่วย</label>
+            <input id="f-hn" type="text" class="input" v-model.trim="form.hn" placeholder="เช่น 48-0010335 (หลายรายคั่นด้วยจุลภาค)" maxlength="200" autocomplete="off">
           </div>
           <div class="field mt">
             <label for="f-detail">รายละเอียดความเสี่ยง/อุบัติการณ์ <span class="req">*</span></label>
             <textarea id="f-detail" class="textarea" :class="{bad: errors.detail}" v-model.trim="form.detail" placeholder="ระบุเหตุการณ์และข้อเท็จจริงที่เกิดขึ้น..." maxlength="5000"></textarea>
             <span class="err" v-if="errors.detail">{{ errors.detail }}</span>
           </div>
+          <p class="hint mt">รหัส : เรื่อง ระดับความรุนแรง และโปรแกรมที่เกี่ยวข้อง ผู้ดูแลระบบจะเป็นผู้จัดหมวดให้ภายหลัง</p>
 
           <div class="field mt">
             <span class="lbl">รูปภาพประกอบ (ถ้ามี)</span>
@@ -230,31 +230,6 @@
                 <button type="button" class="x" @click="removeImage(i)" :aria-label="'ลบรูป ' + im.name"><i class="fas fa-xmark"></i></button>
               </li>
             </ul>
-          </div>
-
-          <h3 class="sec"><span class="tile amber"><i class="fas fa-triangle-exclamation"></i></span> ระดับความรุนแรง</h3>
-          <div class="f2">
-            <div class="field">
-              <label for="f-clin">ระดับความรุนแรงด้านคลินิก (A - I)</label>
-              <select id="f-clin" class="select" v-model="form.clinicalLevel">
-                <option value="">-- ไม่ระบุ / ไม่ใช่ด้านคลินิก --</option>
-                <option v-for="c in CLINICAL" :key="c.v" :value="c.v">ระดับ {{ c.v }} ({{ c.t }})</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="f-sup">ระดับความรุนแรงด้านสนับสนุน (1 - 5)</label>
-              <select id="f-sup" class="select" v-model="form.supportLevel">
-                <option value="">-- ไม่ระบุ / ไม่ใช่ด้านสนับสนุน --</option>
-                <option v-for="s in SUPPORT" :key="s.v" :value="s.v">ระดับ {{ s.v }} ({{ s.t }})</option>
-              </select>
-            </div>
-          </div>
-          <div class="sevnote mt">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(form)) }}</b> · ต่ำ = A–B / 1–2 · กลาง = C–D / 3 · สูง = E–I / 4–5</div>
-
-          <h3 class="sec"><span class="tile amber"><i class="fas fa-tags"></i></span> โปรแกรมความเสี่ยงที่เกี่ยวข้อง <small>(เลือกได้มากกว่า 1 ข้อ)</small></h3>
-          <div class="chipgrid" role="group" aria-label="โปรแกรมความเสี่ยงที่เกี่ยวข้อง">
-            <button v-for="p in PROGRAMS" :key="p" type="button" class="pchip" :class="{on: form.programs.indexOf(p) >= 0}"
-                    :aria-pressed="form.programs.indexOf(p) >= 0" @click="toggleProgram(p)">{{ p }}</button>
           </div>
 
           <h3 class="sec"><span class="tile"><i class="fas fa-screwdriver-wrench"></i></span> การแก้ไขและผู้รายงาน</h3>
@@ -310,7 +285,7 @@
         <div class="card">
           <div class="filters">
             <div class="search"><i class="fas fa-magnifying-glass"></i>
-              <input class="input" type="search" v-model.trim="f.q" placeholder="ค้นหา รหัส / เรื่อง / รายละเอียด / ผู้รายงาน" aria-label="ค้นหา">
+              <input class="input" type="search" v-model.trim="f.q" placeholder="ค้นหา รหัส / เรื่อง / HN / รายละเอียด / ผู้รายงาน" aria-label="ค้นหา">
             </div>
             <select class="select" v-model="f.status" aria-label="กรองตามสถานะ">
               <option value="">ทุกสถานะ</option><option v-for="s in STATUS" :key="s" :value="s">{{ s }}</option>
@@ -339,7 +314,12 @@
                 <tr v-for="r in filtered" :key="r.id" class="click" tabindex="0" @click="openDetail(r)" @keydown.enter="openDetail(r)">
                   <td class="id">{{ r.id }}</td>
                   <td>{{ fmtDate(r.date) }}</td>
-                  <td class="subj"><b>{{ r.subject }}</b><small v-if="r.images && r.images.length" class="hint"><i class="fas fa-image"></i> {{ r.images.length }} รูป</small></td>
+                  <td class="subj">
+                    <b v-if="r.subject">{{ r.subject }}</b>
+                    <template v-else><b>{{ (r.detail || '').slice(0, 40) }}</b><span class="badge-wait">รอจัดหมวด</span></template>
+                    <small v-if="r.hn" class="hint">HN {{ r.hn }}</small>
+                    <small v-if="r.images && r.images.length" class="hint"><i class="fas fa-image"></i> {{ r.images.length }} รูป</small>
+                  </td>
                   <td>{{ progText(r) }}</td>
                   <td>
                     <span class="lv" :class="sevOf(r)" :title="'ความเสี่ยง' + sevLabel(sevOf(r))">{{ r.clinicalLevel || '–' }}</span>
@@ -384,6 +364,28 @@
         </div>
       </section>
 
+      <!-- ===== Start new month (admin) ===== -->
+      <section v-if="isAdmin" v-show="tab==='month'">
+        <div class="page-head"><div><h2>เริ่มเดือนใหม่</h2><p>สร้างชีตสรุปรายเดือนตามแบบรายงานของหน่วยงาน</p></div></div>
+        <div class="card card-pad" style="max-width:560px">
+          <div class="field">
+            <label for="m-ym">เดือนที่ต้องการสร้าง</label>
+            <input id="m-ym" type="month" class="input" v-model="month.ym">
+          </div>
+          <label class="check"><input type="checkbox" v-model="month.overwrite">
+            <span>สร้างทับถ้ามีชีตเดือนนี้อยู่แล้ว (ชีตเดิมจะถูกลบและสร้างใหม่)</span></label>
+          <p class="hint" style="margin-top:10px">ระบบจะดึงรายงานที่เกิดเหตุในเดือนนั้นมาใส่ในชีตให้อัตโนมัติ พร้อมแถวสรุปรวม ควรจัดหมวดรายงานที่ "รอจัดหมวด" ให้ครบก่อนสร้าง</p>
+          <button class="btn btn-block" style="margin-top:14px" @click="startMonth" :disabled="!month.ym || busy.month">
+            <i :class="busy.month ? 'fas fa-spinner spin' : 'fas fa-calendar-plus'"></i> สร้างชีตเดือนใหม่
+          </button>
+          <div v-if="month.result" class="alert alert-demo" style="margin-top:12px">
+            <i class="fas fa-circle-check"></i>
+            <span>สร้างชีต <b>{{ month.result.sheetName }}</b> แล้ว ({{ month.result.count }} รายการ)
+              · <a :href="month.result.url" target="_blank" rel="noopener">เปิดชีต</a></span>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== Reset (admin) ===== -->
       <section v-if="isAdmin" v-show="tab==='reset'">
         <div class="page-head"><div><h2>Reset ข้อมูล</h2><p>สำหรับผู้ดูแลระบบเท่านั้น</p></div></div>
@@ -410,8 +412,9 @@
       <div class="modal-h"><h3 id="dt-title">{{ detail.id }}</h3><button class="iconbtn" @click="detail=null" aria-label="ปิด"><i class="fas fa-xmark"></i></button></div>
       <div class="modal-b">
         <dl class="dl">
-          <dt>เรื่อง</dt><dd><b>{{ detail.subject }}</b></dd>
+          <dt>เรื่อง</dt><dd><b>{{ detail.subject || '-' }}</b><span v-if="!detail.subject" class="badge-wait">รอจัดหมวด</span></dd>
           <dt>วันที่เกิดเหตุ</dt><dd>{{ fmtDate(detail.date) }}</dd>
+          <dt>HN</dt><dd>{{ detail.hn || '-' }}</dd>
           <dt>รายละเอียด</dt><dd>{{ detail.detail }}</dd>
           <dt>ความรุนแรง</dt>
           <dd>คลินิก <span class="lv" :class="sevOf({clinicalLevel:detail.clinicalLevel})">{{ detail.clinicalLevel || '–' }}</span>
@@ -443,10 +446,71 @@
       </div>
       <div class="modal-f">
         <button v-if="isAdmin" class="btn btn-ghost" style="margin-right:auto;color:var(--red-600)" @click="removeReport(detail)"><i class="fas fa-trash"></i> ลบ</button>
+        <button v-if="isAdmin" class="btn btn-amber" @click="openEdit(detail)"><i class="fas fa-pen"></i> แก้ไข</button>
         <button class="btn btn-ghost" @click="detail=null">ปิด</button>
         <button v-if="isAdmin" class="btn" @click="updateStatus" :disabled="busy.status || detailStatus===detail.status"><i :class="busy.status ? 'fas fa-spinner spin' : 'fas fa-check'"></i> บันทึกสถานะ</button>
       </div>
     </div>
+  </div>
+
+  <!-- ============ Edit report modal (admin) ============ -->
+  <div class="overlay" v-if="edit.open && isAdmin" @click.self="closeEdit">
+    <form class="modal" role="dialog" aria-modal="true" aria-labelledby="ed-title" @submit.prevent="saveEdit" novalidate>
+      <div class="modal-h"><h3 id="ed-title">แก้ไข {{ edit.data.id }}</h3>
+        <button type="button" class="iconbtn" @click="closeEdit" aria-label="ปิด"><i class="fas fa-xmark"></i></button></div>
+      <div class="modal-b rform">
+        <div class="f2">
+          <div class="field"><label for="e-date">วันที่เกิดเหตุ <span class="req">*</span></label>
+            <input id="e-date" type="date" class="input" v-model="edit.data.date" :max="today"></div>
+          <div class="field"><label for="e-subj">รหัส : เรื่อง</label>
+            <input id="e-subj" class="input" v-model.trim="edit.data.subject" list="subject-list" placeholder="เลือกหรือพิมพ์รหัส เช่น CPL202" maxlength="300" autocomplete="off">
+            <datalist id="subject-list"><option v-for="o in subjectOptions" :key="o" :value="o"></option></datalist></div>
+        </div>
+        <div class="field mt"><label for="e-hn">HN ผู้ป่วย</label>
+          <input id="e-hn" class="input" v-model.trim="edit.data.hn" maxlength="200" autocomplete="off"></div>
+        <div class="field mt"><label for="e-detail">รายละเอียด <span class="req">*</span></label>
+          <textarea id="e-detail" class="textarea" v-model.trim="edit.data.detail" maxlength="5000"></textarea></div>
+
+        <div class="f2 mt">
+          <div class="field"><label for="e-clin">ระดับความรุนแรงด้านคลินิก (A - I)</label>
+            <select id="e-clin" class="select" v-model="edit.data.clinicalLevel"><option value="">-- ไม่ระบุ --</option>
+              <option v-for="c in CLINICAL" :key="c.v" :value="c.v">ระดับ {{ c.v }} ({{ c.t }})</option></select></div>
+          <div class="field"><label for="e-sup">ระดับความรุนแรงด้านสนับสนุน (1 - 5)</label>
+            <select id="e-sup" class="select" v-model="edit.data.supportLevel"><option value="">-- ไม่ระบุ --</option>
+              <option v-for="s in SUPPORT" :key="s.v" :value="s.v">ระดับ {{ s.v }} ({{ s.t }})</option></select></div>
+        </div>
+        <div class="sevnote mt">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(edit.data)) }}</b> · ต่ำ = A–B / 1–2 · กลาง = C–D / 3 · สูง = E–I / 4–5</div>
+
+        <span class="lbl mt" style="display:block">โปรแกรมความเสี่ยงที่เกี่ยวข้อง <small>(เลือกได้มากกว่า 1 ข้อ)</small></span>
+        <div class="chipgrid" role="group" aria-label="โปรแกรมความเสี่ยงที่เกี่ยวข้อง">
+          <button v-for="p in PROGRAMS" :key="p" type="button" class="pchip" :class="{on: edit.data.programs.indexOf(p) >= 0}"
+                  :aria-pressed="edit.data.programs.indexOf(p) >= 0" @click="toggleEditProgram(p)">{{ p }}</button>
+        </div>
+
+        <div class="f2 mt">
+          <div class="field"><label for="e-fs">สถานะการแก้ไข</label>
+            <select id="e-fs" class="select" v-model="edit.data.fixStatus"><option v-for="o in FIX_STATUS" :key="o" :value="o">{{ o }}</option></select></div>
+          <div class="field"><label for="e-st">สถานะรายงาน</label>
+            <select id="e-st" class="select" v-model="edit.data.status"><option v-for="s in STATUS" :key="s" :value="s">{{ s }}</option></select></div>
+          <div class="field"><label for="e-res">ผลลัพธ์</label>
+            <input id="e-res" class="input" v-model.trim="edit.data.result" maxlength="1000"></div>
+          <div class="field"><label for="e-resp">ผู้รับผิดชอบระดับหน่วยงาน</label>
+            <select id="e-resp" class="select" v-model="edit.data.responsiblePerson"><option value="">--</option>
+              <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option></select></div>
+          <div class="field"><label for="e-fix">การแก้ไขเบื้องต้น</label>
+            <textarea id="e-fix" class="textarea" v-model.trim="edit.data.initialFix" maxlength="3000"></textarea></div>
+          <div class="field"><label for="e-plan">แผนแก้ไข</label>
+            <textarea id="e-plan" class="textarea" v-model.trim="edit.data.fixPlan" maxlength="3000"></textarea></div>
+          <div class="field"><label for="e-rep">ผู้รายงาน <span class="req">*</span></label>
+            <input id="e-rep" class="input" v-model.trim="edit.data.reporterName" maxlength="100"></div>
+        </div>
+        <div v-if="edit.error" class="alert alert-err" role="alert"><i class="fas fa-circle-exclamation"></i><span>{{ edit.error }}</span></div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn btn-ghost" @click="closeEdit">ยกเลิก</button>
+        <button type="submit" class="btn" :disabled="busy.edit"><i :class="busy.edit ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i> บันทึกการแก้ไข</button>
+      </div>
+    </form>
   </div>
 
   <!-- ============ User modal ============ -->
@@ -480,7 +544,7 @@
   </div>
 
   <!-- ============ Confirm modal ============ -->
-  <div class="overlay" v-if="confirm.open" style="z-index:80">
+  <div class="overlay" v-if="confirm.open" style="z-index:90">
     <div class="modal sm" role="alertdialog" aria-modal="true">
       <div class="modal-h"><h3>{{ confirm.title }}</h3></div>
       <div class="modal-b"><p>{{ confirm.message }}</p></div>
