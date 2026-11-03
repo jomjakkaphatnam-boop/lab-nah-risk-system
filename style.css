@@ -365,3 +365,9 @@ input[type=date]{display:block;min-width:0;max-width:100%;-webkit-appearance:non
   .filters{grid-template-columns:minmax(0,1fr)}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* ต่อท้าย style.css เดิม */
+.today{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;font-weight:500;white-space:nowrap}
+@media (max-width:640px){.today{padding:4px 9px;font-size:12px}}
+.check{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px}
+.badge-wait{background:var(--amber-500);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;margin-left:6px}
