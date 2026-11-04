@@ -231,6 +231,7 @@
         login: { username: '', password: '', show: false, error: '' },
         busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false, edit: false, month: false },
         now: Date.now(),
+        dashMonth: '',
         edit: { open: false, data: { programs: [] }, error: '' },
         month: { ym: '', overwrite: false, result: null },
         reports: [], users: [],
@@ -298,6 +299,28 @@
         const o = {}; SUPPORT.forEach(s => { o[s.v] = this.reports.filter(r => r.supportLevel === s.v).length; }); return o;
       },
       recent() { return this.reports.slice(0, 5); },
+      /* ---- สถิติผู้รายงานประจำเดือน ---- */
+      monthOptions() {
+        const set = {};
+        set[this.today.slice(0, 7)] = 1;
+        this.reports.forEach(r => { const m = String(r.date || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) set[m] = 1; });
+        return Object.keys(set).sort().reverse().map(v => ({ v: v, t: this.monthLabel(v) }));
+      },
+      reporterMonth() { return this.dashMonth || (this.monthOptions[0] && this.monthOptions[0].v) || this.today.slice(0, 7); },
+      reporterStats() {
+        const ym = this.reporterMonth, map = {};
+        let total = 0;
+        this.reports.forEach(r => {
+          if (String(r.date || '').slice(0, 7) !== ym) return;
+          const name = String(r.reporterName || '').trim() || '(ไม่ระบุชื่อ)';
+          map[name] = (map[name] || 0) + 1; total++;
+        });
+        const list = Object.keys(map).map(n => ({ name: n, count: map[n] }))
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'th'));
+        const max = list.length ? list[0].count : 0;
+        list.forEach((x, i) => { x.rank = i + 1; x.pct = total ? (x.count * 100 / total).toFixed(1) : '0.0'; x.bar = max ? Math.round(x.count * 100 / max) : 0; });
+        return { total: total, reporters: list.length, list: list, top: list[0] || null };
+      },
       hasFilter() { return Object.keys(this.f).some(k => this.f[k]); },
       filtered() {
         const f = this.f, q = f.q.toLowerCase();
@@ -314,6 +337,10 @@
 
     methods: {
       /* ---- display helpers ---- */
+      monthLabel(ym) {
+        const M = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        return M[+ym.slice(5, 7) - 1] + ' ' + (+ym.slice(0, 4) + 543);
+      },
       progText(r) { return progList(r).join(', ') || '-'; },
       fmtSize,
       sevOf(r) { return levelOf(r.clinicalLevel, r.supportLevel); },

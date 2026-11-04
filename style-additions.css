@@ -3,3 +3,17 @@
 @media (max-width:640px){.today{padding:4px 9px;font-size:12px}}
 .check{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px}
 .badge-wait{background:var(--amber-500);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;margin-left:6px}
+
+/* สถิติผู้รายงานประจำเดือน */
+.rhead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.rsel{max-width:240px}
+.rsum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;margin-bottom:8px}
+.rstat{display:flex;flex-direction:column}
+.rrow{display:grid;grid-template-columns:28px minmax(110px,1.3fr) 3fr 84px;align-items:center;gap:10px;width:100%;padding:8px 4px;background:none;border:0;border-bottom:1px solid rgba(0,0,0,.08);font:inherit;text-align:left;cursor:pointer;color:inherit}
+.rrow:hover{background:rgba(0,0,0,.03)}
+.rrow .rk{color:var(--ink-soft);font-weight:600}
+.rrow .rn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow .rc{text-align:right;white-space:nowrap}
+.rbar{height:10px;border-radius:999px;background:rgba(0,0,0,.07);overflow:hidden}
+.rbar i{display:block;height:100%;background:var(--olive-600);border-radius:inherit}
+@media (max-width:640px){.rrow{grid-template-columns:22px 1fr 70px}.rrow .rbar{grid-column:2 / 4}}
