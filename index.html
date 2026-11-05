@@ -16,6 +16,45 @@
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="style.css">
+  <style id="nah-extra">
+    /* วันที่ที่แถบเขียว */
+    .today{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;font-weight:500;white-space:nowrap}
+    .check{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px}
+    .badge-wait{background:var(--amber-500,#d99a1f);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;margin-left:6px}
+    /* สถิติผู้รายงาน */
+    .rp-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+    .rp-sel{width:auto;min-width:200px;max-width:100%}
+    .rp-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+    .rp-kpi{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 14px;border-radius:12px;background:#f4f6ee;border:1px solid #e3e8d6}
+    .rp-kpi b{font-size:24px;line-height:1.25;color:var(--olive-800,#3b4d23);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .rp-kpi.top b{font-size:18px;line-height:1.6}
+    .rp-kpi span{font-size:13px;color:#6b7260}
+    .rp-list{display:flex;flex-direction:column;gap:2px}
+    .rp-row{display:grid;grid-template-columns:30px 36px minmax(90px,1.2fr) 3fr 90px;align-items:center;gap:12px;width:100%;padding:8px 10px;border:1px solid transparent;border-radius:12px;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+    .rp-row:hover,.rp-row:focus-visible{background:#f4f6ee;border-color:#e3e8d6;outline:none}
+    .rp-rank{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eceee6;color:#566049;font-size:13px;font-weight:700}
+    .rp-row.r1 .rp-rank{background:#f2c94c;color:#5b4300}
+    .rp-row.r2 .rp-rank{background:#d3d7da;color:#3d4348}
+    .rp-row.r3 .rp-rank{background:#e3aa7b;color:#5a3412}
+    .rp-av{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--olive-600,#5b7a34);color:#fff;font-weight:700}
+    .rp-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+    .rp-bar{height:10px;border-radius:999px;background:#e9ece1;overflow:hidden}
+    .rp-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--olive-600,#5b7a34),var(--olive-800,#3b4d23))}
+    .rp-row.r1 .rp-bar i{background:linear-gradient(90deg,#f2c94c,var(--amber-500,#d99a1f))}
+    .rp-num{text-align:right;white-space:nowrap}
+    .rp-num b{font-size:17px}
+    .rp-num small{margin-left:6px;color:#6b7260}
+    .rp-more{display:flex;margin:8px auto 0}
+    @media (max-width:640px){
+      .today{padding:4px 9px;font-size:12px}
+      .rp-kpis{gap:6px}
+      .rp-kpi{padding:8px 10px}
+      .rp-kpi b{font-size:20px}.rp-kpi.top b{font-size:15px}
+      .rp-row{grid-template-columns:28px 1fr 64px;gap:8px 10px}
+      .rp-av{display:none}
+      .rp-bar{grid-column:2 / 4;grid-row:2}
+    }
+  </style>
 </head>
 <body>
 <div id="app" v-cloak>
@@ -157,29 +196,38 @@
           </div>
         </div>
 
-        <div class="card card-pad" style="margin-bottom:16px">
-          <div class="rhead">
+        <div class="card card-pad rp-card" style="margin-bottom:16px">
+          <div class="rp-head">
             <div class="card-title" style="margin:0"><i class="fas fa-user-pen"></i> สถิติผู้รายงานความเสี่ยงประจำเดือน</div>
-            <select class="select rsel" v-model="dashMonth" aria-label="เลือกเดือน">
+            <select class="select rp-sel" v-model="dashMonth" @change="reporterAll=false" aria-label="เลือกเดือน">
               <option value="">{{ monthOptions[0].t }} (ล่าสุด)</option>
               <option v-for="o in monthOptions.slice(1)" :key="o.v" :value="o.v">{{ o.t }}</option>
             </select>
           </div>
-          <div v-if="reporterStats.total" class="rsum">
-            <span><b>{{ reporterStats.total }}</b> รายงาน</span>
-            <span><b>{{ reporterStats.reporters }}</b> ผู้รายงาน</span>
-            <span v-if="reporterStats.top">รายงานมากที่สุด: <b>{{ reporterStats.top.name }}</b> ({{ reporterStats.top.count }})</span>
-          </div>
-          <div v-if="reporterStats.total" class="rstat">
-            <button v-for="x in reporterStats.list" :key="x.name" class="rrow" @click="goList({q: x.name})" :title="'ดูรายงานของ ' + x.name">
-              <span class="rk">{{ x.rank }}</span>
-              <span class="rn">{{ x.name }}</span>
-              <span class="rbar" role="img" :aria-label="x.pct + ' เปอร์เซ็นต์'"><i :style="{width: x.bar + '%'}"></i></span>
-              <span class="rc"><b>{{ x.count }}</b> <small>({{ x.pct }}%)</small></span>
+
+          <template v-if="reporterStats.total">
+            <div class="rp-kpis">
+              <div class="rp-kpi"><b>{{ reporterStats.total }}</b><span>รายงานทั้งหมด</span></div>
+              <div class="rp-kpi"><b>{{ reporterStats.reporters }}</b><span>ผู้รายงาน</span></div>
+              <div class="rp-kpi top"><b>{{ reporterStats.top.name }}</b><span>รายงานมากที่สุด · {{ reporterStats.top.count }} ครั้ง</span></div>
+            </div>
+
+            <div class="rp-list">
+              <button v-for="x in reporterShown" :key="x.name" class="rp-row" :class="'r' + x.rank" @click="goList({q: x.name})" :title="'ดูรายงานของ ' + x.name">
+                <span class="rp-rank">{{ x.rank }}</span>
+                <span class="rp-av" aria-hidden="true">{{ reporterInitial(x.name) }}</span>
+                <span class="rp-name">{{ x.name }}</span>
+                <span class="rp-bar" role="img" :aria-label="x.pct + ' เปอร์เซ็นต์'"><i :style="{width: Math.max(x.bar, 4) + '%'}"></i></span>
+                <span class="rp-num"><b>{{ x.count }}</b><small>{{ x.pct }}%</small></span>
+              </button>
+            </div>
+            <button v-if="reporterStats.list.length > 8" class="btn btn-ghost btn-sm rp-more" @click="reporterAll = !reporterAll">
+              <i :class="reporterAll ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+              {{ reporterAll ? 'แสดงน้อยลง' : 'ดูทั้งหมด ' + reporterStats.list.length + ' คน' }}
             </button>
-          </div>
+          </template>
           <div v-else class="empty"><i class="fas fa-user-slash"></i>ไม่มีรายงานในเดือน {{ monthLabel(reporterMonth) }}</div>
-          <p class="hint" style="margin-top:8px">นับตามวันที่เกิดเหตุ · คลิกชื่อเพื่อดูรายงานของผู้นั้น</p>
+          <p class="hint" style="margin-top:10px">นับตามวันที่เกิดเหตุ · คลิกที่แถวเพื่อดูรายงานของผู้นั้น</p>
         </div>
 
         <div class="grid-2">

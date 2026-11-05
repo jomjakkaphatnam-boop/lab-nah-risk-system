@@ -232,6 +232,7 @@
         busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false, edit: false, month: false },
         now: Date.now(),
         dashMonth: '',
+        reporterAll: false,
         edit: { open: false, data: { programs: [] }, error: '' },
         month: { ym: '', overwrite: false, result: null },
         reports: [], users: [],
@@ -307,6 +308,7 @@
         return Object.keys(set).sort().reverse().map(v => ({ v: v, t: this.monthLabel(v) }));
       },
       reporterMonth() { return this.dashMonth || (this.monthOptions[0] && this.monthOptions[0].v) || this.today.slice(0, 7); },
+      reporterShown() { const l = this.reporterStats.list; return this.reporterAll ? l : l.slice(0, 8); },
       reporterStats() {
         const ym = this.reporterMonth, map = {};
         let total = 0;
@@ -337,6 +339,7 @@
 
     methods: {
       /* ---- display helpers ---- */
+      reporterInitial(n) { return String(n || '?').replace(/^[(\s]+/, '').charAt(0) || '?'; },
       monthLabel(ym) {
         const M = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
         return M[+ym.slice(5, 7) - 1] + ' ' + (+ym.slice(0, 4) + 543);
