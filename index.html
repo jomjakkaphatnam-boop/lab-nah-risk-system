@@ -314,16 +314,8 @@
               </div>
             </div>
             <div class="field">
-              <label for="f-res">ผลลัพธ์</label>
-              <input id="f-res" type="text" class="input" v-model.trim="form.result" placeholder="เช่น แก้ไขเรียบร้อย, อยู่ระหว่างดำเนินการ" maxlength="1000">
-            </div>
-            <div class="field">
               <label for="f-fix">การแก้ไขเบื้องต้น</label>
               <textarea id="f-fix" class="textarea" v-model.trim="form.initialFix" placeholder="มาตรการแก้ไขเฉพาะหน้า..." maxlength="3000"></textarea>
-            </div>
-            <div class="field">
-              <label for="f-plan">แผนแก้ไข</label>
-              <textarea id="f-plan" class="textarea" v-model.trim="form.fixPlan" placeholder="แนวทางป้องกันระยะยาว..." maxlength="3000"></textarea>
             </div>
             <div class="field">
               <label for="f-resp">ผู้รับผิดชอบระดับหน่วยงาน</label>
@@ -338,6 +330,8 @@
               <span class="err" v-if="errors.reporterName">{{ errors.reporterName }}</span>
             </div>
           </div>
+
+          <p class="hint mt">ผลลัพธ์และแผนแก้ไข ผู้ดูแลระบบจะเป็นผู้กรอกภายหลัง</p>
 
           <div class="actions">
             <button type="button" class="btn btn-ghost" @click="resetForm" :disabled="busy.save">ล้างฟอร์ม</button>
