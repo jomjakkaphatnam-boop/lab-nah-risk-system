@@ -537,7 +537,7 @@
             <input id="e-date" type="date" class="input" v-model="edit.data.date" :max="today"></div>
           <div class="field"><label for="e-subj">รหัส : เรื่อง</label>
             <input id="e-subj" class="input" v-model.trim="edit.data.subject" list="subject-list" placeholder="เลือกหรือพิมพ์รหัส เช่น CPL202" maxlength="300" autocomplete="off">
-            <datalist id="subject-list"><option v-for="o in subjectOptions" :key="o" :value="o"></option></datalist></div>
+            <datalist id="subject-list"><option v-for="o in subjectOptions" :key="o.v" :value="o.v" :label="o.t"></option></datalist></div>
         </div>
         <div class="field mt"><label for="e-hn">HN ผู้ป่วย</label>
           <input id="e-hn" class="input" v-model.trim="edit.data.hn" maxlength="200" autocomplete="off"></div>

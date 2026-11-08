@@ -3,7 +3,7 @@
   'use strict';
 
   const CFG = Object.assign({
-    API_URL: '', SESSION_HOURS: 6, SUBJECT_SUGGESTIONS: [],
+    API_URL: '', SESSION_HOURS: 6, SUBJECT_SUGGESTIONS: [], SUBJECT_TITLES: {},
     UNITS: ['3A', '3B', 'ER', 'ICU', 'พิเศษ 5', 'พยาธิ', 'สาธารณูปโภค', 'OPD', 'ไตเทียม', 'MRI', 'ห้องเจาะเลือด']
   }, window.NAH_CONFIG || {});
   const UNITS = CFG.UNITS;
@@ -294,7 +294,8 @@
       subjectOptions() {
         const set = {}; CFG.SUBJECT_SUGGESTIONS.forEach(x => { set[x] = 1; });
         this.reports.forEach(r => { if (r.subject) set[r.subject] = 1; });
-        return Object.keys(set).slice(0, 200);
+        const titles = CFG.SUBJECT_TITLES || {};
+        return Object.keys(set).slice(0, 200).map(v => ({ v: v, t: titles[v] || '' }));
       },
       supportCounts() {
         const o = {}; SUPPORT.forEach(s => { o[s.v] = this.reports.filter(r => r.supportLevel === s.v).length; }); return o;
