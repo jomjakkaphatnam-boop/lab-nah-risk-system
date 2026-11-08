@@ -229,9 +229,10 @@
       return {
         demo: DEMO, user: null, token: '', tab: 'dashboard',
         login: { username: '', password: '', show: false, error: '' },
-        busy: { img: false, login: false, save: false, load: false, user: false, reset: false, status: false, edit: false, month: false },
+        busy: { triage: false, img: false, login: false, save: false, load: false, user: false, reset: false, status: false, edit: false, month: false },
         now: Date.now(),
         dashMonth: '',
+        triage: { id: '', data: { programs: [] }, error: '' },
         reporterAll: false,
         edit: { open: false, data: { programs: [] }, error: '' },
         month: { ym: '', overwrite: false, result: null },
@@ -242,7 +243,7 @@
         userModal: { open: false, isNew: true, data: {} }, userErr: '',
         confirm: { open: false, title: '', message: '', okText: 'ยืนยัน', danger: false, resolve: null },
         resetText: '', toasts: [], toastSeq: 0, today: ymd(new Date()),
-        STATUS, PROGRAMS, CLINICAL, SUPPORT, UNITS, FIX_STATUS, MAX_IMAGES, MAX_IMAGE_MB
+        STATUS, PROGRAMS, CLINICAL, SUPPORT, UNITS, FIX_STATUS, MAX_IMAGES, MAX_IMAGE_MB, CFG_TITLES: CFG.SUBJECT_TITLES || {}
       };
     },
 
@@ -258,6 +259,7 @@
           { id: 'new', label: 'รายงานใหม่', icon: 'fas fa-file-circle-plus' },
           { id: 'list', label: 'รายการ', icon: 'fas fa-list-ul' }
         ];
+        if (this.isAdmin) t.push({ id: 'triage', label: 'จัดหมวด', icon: 'fas fa-list-check', badge: this.queue.length });
         if (this.isAdmin) t.push({ id: 'users', label: 'ผู้ใช้', icon: 'fas fa-users' }, { id: 'month', label: 'เริ่มเดือนใหม่', icon: 'fas fa-calendar-plus' }, { id: 'reset', label: 'Reset', icon: 'fas fa-trash-can' });
         return t;
       },
@@ -309,6 +311,20 @@
         return Object.keys(set).sort().reverse().map(v => ({ v: v, t: this.monthLabel(v) }));
       },
       reporterMonth() { return this.dashMonth || (this.monthOptions[0] && this.monthOptions[0].v) || this.today.slice(0, 7); },
+      queue() { return this.reports.filter(r => !String(r.subject || '').trim()).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id))); },
+      triageSuggest() {
+        const t = (this.triage.data.detail || '') + ' ' + (this.triage.data.initialFix || '');
+        const rules = [
+          ['CPL202', /hemolysis|hemolyse|clot|ปริมาตร|ไม่มีสิ่งส่งตรวจ|หลอดผิด/i],
+          ['CPP101', /สติ(ก)?เกอร์|ฉลาก|สลับ|ผิดคน|ไม่มีชื่อ/i],
+          ['CPP203', /order|ออเดอร์|ใบนัด|ไม่ได้คีย์|ไม่มีการสั่ง/i],
+          ['CPI204', /ปิดฝา|biohazard|ปนเปื้อน|เลอะ|กระสวย|ถุง/i],
+          ['GPE206', /ไฟดับ|ไฟตก|ไฟกระพริบ|น้ำไม่ไหล|UPS/i],
+          ['CPL201', /ผลตรวจผิด|ผลผิด|เครื่อง.*(เสีย|ใช้ไม่ได้)/i]
+        ];
+        const titles = CFG.SUBJECT_TITLES || {};
+        return rules.filter(r => r[1].test(t)).slice(0, 3).map(r => ({ v: r[0], t: titles[r[0]] || '' }));
+      },
       reporterShown() { const l = this.reporterStats.list; return this.reporterAll ? l : l.slice(0, 8); },
       reporterStats() {
         const ym = this.reporterMonth, map = {};
@@ -440,6 +456,7 @@
       setTab(id) {
         this.tab = id;
         if (id === 'users') this.loadUsers();
+        if (id === 'triage' && !this.triageCurrent() && this.queue.length) this.pickTriage(this.queue[0]);
         window.scrollTo({ top: 0 });
       },
       goList(filters) {
@@ -454,6 +471,40 @@
         const i = this.form.programs.indexOf(p);
         if (i >= 0) this.form.programs.splice(i, 1); else this.form.programs.push(p);
       },
+      /* ---- คิวจัดหมวด (admin) ---- */
+      pickTriage(r) {
+        this.triage = { id: r.id, error: '', data: Object.assign({}, r, { hn: r.hn || '', programs: progList(r), fixStatus: r.fixStatus || FIX_STATUS[0], status: r.status || STATUS[0] }) };
+      },
+      triageCurrent() { return this.queue.find(x => x.id === this.triage.id) || null; },
+      triageToggleProgram(p) {
+        const a = this.triage.data.programs, i = a.indexOf(p);
+        if (i >= 0) a.splice(i, 1); else a.push(p);
+      },
+      triageSet(k, v) { this.triage.data[k] = this.triage.data[k] === v ? '' : v; },
+      triageNextAfter(id) {
+        const q = this.queue, i = q.findIndex(x => x.id === id);
+        return q[i + 1] || q.find(x => x.id !== id) || null;
+      },
+      triageSkip() { const n = this.triageNextAfter(this.triage.id); if (n) this.pickTriage(n); },
+      async saveTriage() {
+        const d = this.triage.data;
+        if (!String(d.subject || '').trim()) { this.triage.error = 'เลือกหรือพิมพ์ "รหัส : เรื่อง" ก่อนบันทึก'; return; }
+        this.triage.error = '';
+        const next = this.triageNextAfter(d.id);
+        this.busy.triage = true;
+        const res = await this.api('updateReport', { id: d.id, report: {
+          date: d.date, subject: d.subject, hn: d.hn || '', detail: d.detail,
+          clinicalLevel: d.clinicalLevel || '', supportLevel: d.supportLevel || '', relatedProgram: d.programs.slice(),
+          fixStatus: d.fixStatus, status: d.status, result: d.result || '',
+          responsiblePerson: d.responsiblePerson || '', initialFix: d.initialFix || '',
+          fixPlan: d.fixPlan || '', reporterName: d.reporterName } });
+        this.busy.triage = false;
+        if (!res.success) { if (res.code !== 'AUTH') this.triage.error = res.message; return; }
+        this.toast('จัดหมวดแล้ว: ' + d.id);
+        await this.loadReports();
+        if (next && this.queue.find(x => x.id === next.id)) this.pickTriage(next); else this.triage = { id: '', data: { programs: [] }, error: '' };
+      },
+
       /* ---- edit (admin) ---- */
       openEdit(r) {
         this.edit = {

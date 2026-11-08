@@ -54,6 +54,25 @@
       .rp-av{display:none}
       .rp-bar{grid-column:2 / 4;grid-row:2}
     }
+    /* คิวจัดหมวด */
+    .tab-badge{background:var(--amber-500,#d99a1f);color:#2b1d00;border-radius:999px;padding:0 8px;font-size:12px;line-height:20px;min-width:20px;text-align:center}
+    .tr-banner{display:flex;align-items:center;gap:12px;width:100%;margin-bottom:14px;padding:12px 16px;border:1px solid #f0d28a;border-radius:12px;background:#fdf1d3;color:#4a3300;font:inherit;text-align:left;cursor:pointer}
+    .tr-banner span{flex:1}.tr-banner b{font-size:18px}
+    .tr-wrap{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+    .tr-list{display:flex;flex-direction:column;gap:8px;max-height:72vh;overflow:auto}
+    .tr-item{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px;border:1.5px solid #dfe4d2;border-radius:12px;background:#fff;font:inherit;color:inherit;cursor:pointer}
+    .tr-item.on{border-color:var(--olive-600,#5b7a34);background:#eaf0dc}
+    .tr-item small,.tr-meta{font-size:13px;color:#5f6652}
+    .tr-meta{display:flex;justify-content:space-between;align-items:center}
+    .tr-title{font-size:19px;font-weight:700;margin-top:2px;white-space:pre-wrap}
+    .tr-panel{display:flex;flex-direction:column;gap:16px}
+    .tr-suggest{background:#f3f5ec;border-radius:12px;padding:12px}
+    .tr-sg{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+    .tr-sgb{flex:1;min-width:200px;text-align:left;padding:10px 14px;border:1.5px solid #dfe4d2;border-radius:12px;background:#fff;font:inherit;color:inherit;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+    .tr-sgb.on{border:2px solid var(--olive-800,#3b4d23)}
+    .tr-sgb small{color:#5f6652}
+    .tr-chips{display:flex;flex-wrap:wrap;gap:8px}
+    @media (max-width:860px){.tr-wrap{grid-template-columns:1fr}.tr-list{max-height:none;flex-direction:row;overflow-x:auto}.tr-item{min-width:240px}}
   </style>
 </head>
 <body>
@@ -125,7 +144,7 @@
       </div>
       <nav class="tabs" aria-label="เมนูหลัก">
         <button v-for="t in tabs" :key="t.id" class="tab" :class="{on: tab===t.id}" @click="setTab(t.id)">
-          <i :class="t.icon"></i><span>{{ t.label }}</span>
+          <i :class="t.icon"></i><span>{{ t.label }}</span><b v-if="t.badge" class="tab-badge">{{ t.badge }}</b>
         </button>
       </nav>
     </header>
@@ -139,6 +158,12 @@
           <div><h2>ภาพรวมความเสี่ยง</h2><p>สรุปจากรายงานทั้งหมด {{ reports.length }} รายการ</p></div>
           <button class="btn btn-amber" @click="setTab('new')"><i class="fas fa-plus"></i> แจ้งความเสี่ยงใหม่</button>
         </div>
+
+        <button v-if="isAdmin && queue.length" class="tr-banner" @click="setTab('triage')">
+          <i class="fas fa-list-check"></i>
+          <span><b>{{ queue.length }}</b> รายการรอจัดหมวด — กดเพื่อไปจัดหมวด</span>
+          <i class="fas fa-chevron-right"></i>
+        </button>
 
         <div class="stats">
           <button class="stat" @click="goList({})"><b>{{ stats.total }}</b><span>ทั้งหมด</span></button>
@@ -402,6 +427,61 @@
               {{ reports.length ? 'ไม่พบรายการที่ตรงกับตัวกรอง' : 'ยังไม่มีรายการ — เริ่มจากเมนู "รายงานใหม่"' }}
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ===== Triage (admin) ===== -->
+      <section v-if="isAdmin" v-show="tab==='triage'">
+        <div class="page-head"><div><h2>จัดหมวดรายงาน</h2><p>เหลือ {{ queue.length }} รายการ · เรียงจากเก่าสุด</p></div></div>
+        <div v-if="!queue.length" class="card card-pad empty"><i class="fas fa-circle-check"></i>ไม่มีรายการที่รอจัดหมวด</div>
+        <div v-else class="tr-wrap">
+          <div class="tr-list">
+            <button v-for="r in queue" :key="r.id" class="tr-item" :class="{on: triage.id===r.id}" @click="pickTriage(r)">
+              <span class="tr-meta"><span>{{ r.id }}</span><span class="badge-wait">รอจัดหมวด</span></span>
+              <b>{{ (r.detail || '').split('\n')[0].slice(0, 70) }}</b>
+              <small>{{ r.responsiblePerson || '-' }} · {{ fmtDate(r.date) }} · {{ r.reporterName }}</small>
+            </button>
+          </div>
+          <form v-if="triageCurrent()" class="card card-pad rform tr-panel" @submit.prevent="saveTriage" novalidate>
+            <div>
+              <div class="hint">{{ triage.data.id }} · {{ triage.data.responsiblePerson || '-' }} · {{ triage.data.reporterName }}</div>
+              <div class="tr-title">{{ triage.data.detail }}</div>
+              <div class="hint" v-if="triage.data.hn">HN {{ triage.data.hn }}</div>
+            </div>
+
+            <div v-if="triageSuggest.length" class="tr-suggest">
+              <div class="lbl">ระบบแนะนำจากคำในรายงาน (ผู้ดูแลเป็นผู้ยืนยัน)</div>
+              <div class="tr-sg">
+                <button v-for="s in triageSuggest" :key="s.v" type="button" class="tr-sgb" :class="{on: triage.data.subject===s.v}" @click="triage.data.subject = s.v">
+                  <b>{{ s.v }}</b><small>{{ s.t }}</small>
+                </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="tr-subj">รหัส : เรื่อง <span class="req">*</span></label>
+              <input id="tr-subj" class="input" v-model.trim="triage.data.subject" list="subject-list" placeholder="เลือกหรือพิมพ์รหัส เช่น CPL202" maxlength="300" autocomplete="off">
+              <span class="hint" v-if="(CFG_TITLES[triage.data.subject] || '')">{{ CFG_TITLES[triage.data.subject] }}</span>
+            </div>
+
+            <div class="f2">
+              <div class="field"><span class="lbl">ระดับด้านคลินิก (A–I)</span>
+                <div class="tr-chips"><button v-for="c in CLINICAL" :key="c.v" type="button" class="pchip" :class="{on: triage.data.clinicalLevel===c.v}" :aria-pressed="triage.data.clinicalLevel===c.v" :title="c.t" @click="triageSet('clinicalLevel', c.v)">{{ c.v }}</button></div></div>
+              <div class="field"><span class="lbl">ระดับด้านสนับสนุน (1–5)</span>
+                <div class="tr-chips"><button v-for="s in SUPPORT" :key="s.v" type="button" class="pchip" :class="{on: triage.data.supportLevel===s.v}" :aria-pressed="triage.data.supportLevel===s.v" :title="s.t" @click="triageSet('supportLevel', s.v)">{{ s.v }}</button></div></div>
+            </div>
+            <div class="sevnote">ความเสี่ยงจะถูกจัดเป็น <b>{{ sevLabel(sevOf(triage.data)) }}</b> · ต่ำ = A–B / 1–2 · กลาง = C–D / 3 · สูง = E–I / 4–5</div>
+
+            <div class="field"><span class="lbl">โปรแกรมความเสี่ยงที่เกี่ยวข้อง</span>
+              <div class="tr-chips"><button v-for="p in PROGRAMS" :key="p" type="button" class="pchip" :class="{on: triage.data.programs.indexOf(p) >= 0}" :aria-pressed="triage.data.programs.indexOf(p) >= 0" @click="triageToggleProgram(p)">{{ p }}</button></div></div>
+
+            <div v-if="triage.error" class="alert alert-err" role="alert"><i class="fas fa-circle-exclamation"></i><span>{{ triage.error }}</span></div>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" @click="triageSkip" :disabled="queue.length < 2">ข้ามไปก่อน</button>
+              <button type="submit" class="btn btn-save" :disabled="busy.triage"><i :class="busy.triage ? 'fas fa-spinner spin' : 'fas fa-floppy-disk'"></i> บันทึกแล้วไปรายการถัดไป</button>
+            </div>
+          </form>
+          <div v-else class="card card-pad empty"><i class="fas fa-hand-pointer"></i>เลือกรายการทางซ้ายเพื่อจัดหมวด</div>
         </div>
       </section>
 
